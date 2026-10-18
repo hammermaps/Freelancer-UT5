@@ -111,6 +111,12 @@ Vollständige Quellenliste siehe `CLAUDE.md`.
     (aggressive Relevanzfilter, reduzierte Replikationsrate für Entferntes, vereinfachte KI/Effekte, ggf. Replication Graph / Iris).
     Anmeldung, Start und Rücktransfer verwaltet der Events-Dienst.
 
+14. **Asset-Pipeline in drei Stufen (Original -> HD):**
+    1. *Import:* `FLImport` erzeugt aus den Originalen Meshes, Materialien und Texturen unter `Content/Imported/` (nicht im Repo). Hardpoints, Dockpunkte, Kollision und Skalierung kommen aus den Daten und gelten für alle Stufen.
+    2. *Texturen-Upgrade:* Offline-Werkzeuge (`Tools/`) skalieren Originaltexturen per KI-Upscaling hoch und erzeugen Normal-, Roughness-, Metallic- und Emissive-Maps (Ausgangspunkt: `GameData/Work/Freelancer-Textures`, `-HD-Staging`). Master-Materialien (`M_FL_Ship`, `M_FL_Station`) mit Parametern, Instanzen und Map-Zuordnung (Namensregel) erzeugt der Importer.
+    3. *HD-Modelle:* Originalmodell dient als Vorlage (Silhouette, Proportionen, Hardpoints); neue, polygonreichere Modelle werden von Hand erstellt (Blender, High-Poly-Bake), Nanite statt LOD-Kette. Zuerst Spielerschiffe, große Stationen, Jump Gates.
+    Austausch ohne Codeänderung: Datensätze (`DA_`/`DT_`) verweisen auf Mesh/Material; ein HD-Asset mit gleicher ID ersetzt das Original. Der Server kennt keine Meshes, nur Spieldaten. Rechtlich offen (siehe Risiken): Ableitungen bleiben Werke von Microsoft; für die Verteilung sind eigene Designs im Stil des Originals der sichere Weg.
+
 ## 4. Meilensteine
 
 Jeder Meilenstein endet **mit mehreren verbundenen Clients**, nicht mit einem lokalen Test.
@@ -142,6 +148,13 @@ Jeder Meilenstein endet **mit mehreren verbundenen Clients**, nicht mit einem lo
   Märkte, Systeme (`universe.ini`, `SYSTEMS/*`), Solar-Archetypen.
 - Mesh-/Textur-Konverter für 1–2 Testschiffe (z. B. Liberty-Starter-Schiff) und Teile eines Systems.
 - **Fertig, wenn:** Ein Original-Schiff mit korrekten Texturen steht im UE-Level, auf Server und Client identisch geladen.
+
+### M1b – HD-Asset-Pipeline (parallel zu M2–M4, laufend)
+- Werkzeug `Tools/upscale_textures.*` (offline): Upscaling der Originaltexturen, Ableitung von Normal/Roughness/Metallic/Emissive, Ausgabe im Namensschema für den Importer.
+- Master-Materialien und Material-Instanz-Erzeugung im `FLImport`; Austausch-Mechanismus (HD-Asset gleicher ID ersetzt das Original).
+- Nanite-Import-Einstellungen und Konventionen für HD-Modelle (Ordner `Content/Freelancer/HD/`, Namen, Hardpoint-Sockets).
+- Pilot: 1–2 Schiffe plus 1 Station in Stufe 2, danach Stufe 3 für das Starterschiff.
+- **Fertig, wenn:** Ein Schiff läuft im Spiel wahlweise mit Original- und mit HD-Textur/-Modell, ohne Codeänderung umschaltbar.
 
 ### M2 – Netzwerk-Flug (Wochen 4–8)
 - `AFLShip` + `UFLShipMovementComponent` mit Enhanced Input: Maussteuerung (Cursor-Offset), Schub, Strafe, Reverse, Cruise Engine.

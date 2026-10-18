@@ -130,6 +130,7 @@ Nach dem Umzug `Makefile`/Projektdateien neu generieren (enthalten alte Pfade).
 - Targets: `FreelancerClient`, `FreelancerServer` (Spiel-Instanz), `FreelancerEditor`, später Programm-Targets `FreelancerGateway`, `FreelancerCoordinator`, `FreelancerAgent`, `FreelancerEvents`, `FreelancerAdmin` (anzulegen ab M0/M4).
 - Dienste sprechen über das geteilte Modul `FreelancerProtocol` (versionierte Nachrichten). Spiel-Instanzen greifen nie direkt auf die Datenbank zu.
 - Öffentlicher Betrieb: Sicherheit (TLS/mTLS, Rate-Limits, Audit) von Anfang an mitdenken. **Keine Originaldaten in Builds, die verteilt werden**, solange die Rechtsfrage offen ist.
+- **Asset-Pipeline (PLAN.md Punkt 14, M1b):** Original importieren -> Texturen per Offline-Upscaling aufwerten (Normal/Roughness/Metallic/Emissive) -> eigene HD-Modelle (Nanite) nach Vorlage. Datensätze verweisen auf Mesh/Material, ein HD-Asset gleicher ID ersetzt das Original. Der Server lädt keine Meshes. Rechtlich: Ableitungen sind Microsoft-Werke, nicht verteilen.
 - Eingabe über **Enhanced Input** (Input Actions + Mapping Contexts), nicht über Legacy-Axis-Mappings.
 - Große Distanzen: Large World Coordinates, `double`/`FVector` (UE5 ist standardmäßig double).
 
