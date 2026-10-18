@@ -1,9 +1,12 @@
 // Tests fuer flformats. Nur synthetische Daten, keine Originaldateien.
 #include "Ini.h"
+#include "Model.h"
 #include "Utf.h"
 #include "Vms.h"
 #include <cstdio>
 #include <cstring>
+#include <map>
+#include <memory>
 
 static int Failures = 0;
 #define CHECK(Cond) do { if (!(Cond)) { std::printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #Cond); ++Failures; } } while (0)
@@ -118,11 +121,83 @@ static void TestVms()
 	CHECK(Text.find("TEXCOORD_0") != std::string::npos);
 }
 
+static std::unique_ptr<UtfNode> Leaf(const std::string& Name, const void* Data, size_t Size)
+{
+	auto N = std::make_unique<UtfNode>();
+	N->Name = Name;
+	N->Data.assign((const uint8_t*)Data, (const uint8_t*)Data + Size);
+	return N;
+}
+static std::unique_ptr<UtfNode> Dir(const std::string& Name)
+{
+	auto N = std::make_unique<UtfNode>();
+	N->Name = Name;
+	N->bIntermediate = true;
+	return N;
+}
+
+static void TestModel()
+{
+	// Werte stammen aus dem Original (or_ships.mat): Name -> CRC
+	CHECK(FlModelCrc("elite_256OR") == 0xf2e64555);
+	CHECK(FlModelCrc("ELITE_256or") == 0xf2e64555);   // nicht case-sensitiv
+	CHECK(FlModelCrc("O_glass") == 0x1519a611);
+	CHECK(FlModelCrc("") == 0);
+
+	auto Root = Dir("/");
+	auto Lib = Dir("Material library");
+	auto Mat = Dir("elite_256OR");
+	Mat->Children.push_back(Leaf("Type", "DcDt\0", 5));
+	Mat->Children.push_back(Leaf("Dt_name", "elite_256.TGA\0", 14));
+	float Dc[3] = {0.5f, 0.25f, 1.0f};
+	Mat->Children.push_back(Leaf("Dc", Dc, 12));
+	Lib->Children.push_back(std::move(Mat));
+	Lib->Children.push_back(Dir("leer"));
+	Root->Children.push_back(std::move(Lib));
+	auto Mats = ReadMaterials(*Root);
+	CHECK(Mats.size() == 2);
+	CHECK(Mats.count(0xf2e64555) == 1);
+	CHECK(Mats[0xf2e64555].DiffuseTexture == "elite_256.TGA" && Mats[0xf2e64555].Type == "DcDt" && Mats[0xf2e64555].Dc[1] == 0.25f);
+	CHECK(ReadMaterials(*Dir("/")).empty());
+
+	auto Hp = Dir("Hardpoints");
+	auto Fixed = Dir("Fixed");
+	auto One = Dir("HpWeapon01");
+	float Pos[3] = {1, 2, 3};
+	One->Children.push_back(Leaf("Position", Pos, 12));
+	Fixed->Children.push_back(std::move(One));
+	Fixed->Children.push_back(Leaf("stray", Pos, 12));    // Blatt wird ignoriert
+	Hp->Children.push_back(std::move(Fixed));
+	auto Rev = Dir("Revolute");
+	Rev->Children.push_back(Dir("HpTurret"));              // ohne Position -> Nullvektor
+	Hp->Children.push_back(std::move(Rev));
+	Root->Children.push_back(std::move(Hp));
+	auto Hps = ReadHardpoints(*Root);
+	CHECK(Hps.size() == 2);
+	CHECK(Hps[0].Name == "HpWeapon01" && !Hps[0].bRevolute && Hps[0].Position[2] == 3.0f && Hps[0].Orientation[0] == 1.0f);
+	CHECK(Hps[1].bRevolute && Hps[1].Position[0] == 0.0f);
+
+	// glTF mit Material
+	VmsMesh M; std::string Err;
+	CHECK(ParseVms(MakeVms(), M, Err));
+	std::map<uint32_t, GlbMaterial> GM;
+	GlbMaterial G; G.Name = "m1"; G.Texture = "elite_256.TGA";
+	GM[0xDEADBEEF] = G;
+	auto Glb = BuildGlb({{"tri", M}}, &GM);
+	std::string Text((const char*)Glb.data(), Glb.size());
+	CHECK(Text.find("\"materials\":[{\"name\":\"m1\"") != std::string::npos);
+	CHECK(Text.find("elite_256.png") != std::string::npos);
+	CHECK(Text.find("\"material\":0") != std::string::npos);
+	auto NoMat = BuildGlb({{"tri", M}}, nullptr);
+	CHECK(std::string((const char*)NoMat.data(), NoMat.size()).find("\"materials\"") == std::string::npos);
+}
+
 int main()
 {
 	TestUtf();
 	TestIni();
 	TestVms();
+	TestModel();
 	std::printf(Failures ? "%d Fehler\n" : "alle Tests bestanden\n", Failures);
 	return Failures ? 1 : 0;
 }

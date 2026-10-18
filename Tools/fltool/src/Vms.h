@@ -1,6 +1,7 @@
 // VMeshData (Vertex-Mesh) aus UTF-Containern lesen. Referenz: Librelancer LibreLancer/Utf/Vms/VMeshData.cs
 #pragma once
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,13 @@ struct VmsMesh
 // Gibt false und setzt Error bei ungueltigen Daten.
 bool ParseVms(const std::vector<uint8_t>& Data, VmsMesh& Out, std::string& Error);
 
+struct GlbMaterial
+{
+	std::string Name;
+	std::string Texture; // Dateiname ohne Pfad; wird als "<basis>.png" referenziert
+	float Dc[3] = {1, 1, 1};
+};
+
 // Schreibt Meshes als binaeres glTF (.glb). Pro VmsGroup eine Primitive; MaterialCrc steht in extras.
-std::vector<uint8_t> BuildGlb(const std::vector<std::pair<std::string, VmsMesh>>& Meshes);
+std::vector<uint8_t> BuildGlb(const std::vector<std::pair<std::string, VmsMesh>>& Meshes, const std::map<uint32_t, GlbMaterial>* Mats = nullptr);
 }

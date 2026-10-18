@@ -2,9 +2,11 @@
 //   fltool utf ls <datei>                 Baum ausgeben
 //   fltool utf extract <datei> <zielordner>  alle Blatt-Daten als Dateien schreiben
 //   fltool ini sections <datei>              Sektionen mit Anzahl der Eintraege
-//   fltool mesh export <datei> <out.glb> [--all-lods]  VMeshData nach glTF (LOD0, sonst alle)
+//   fltool model info <datei>\n  fltool mesh export <datei> <out.glb> [--all-lods] [--mat <datei.mat>]  VMeshData nach glTF (LOD0, sonst alle)
+//   fltool model info <datei>                Materialien (CRC, Typ, Textur) und Hardpoints
 //   fltool tex extract <datei> <zielordner>  je Textur die groesste MIP-Stufe als .dds/.tga schreiben
 #include "Ini.h"
+#include "Model.h"
 #include "Utf.h"
 #include "Vms.h"
 #include <cstdio>
@@ -12,6 +14,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <fstream>
+#include <map>
 #include <cctype>
 
 namespace fs = std::filesystem;
@@ -76,7 +79,7 @@ static int ExtractTextures(const UtfNode& Root, const fs::path& Dir)
 }
 
 // Sammelt VMeshData-Knoten ("VMeshLibrary"/<name>/VMeshData).
-static int ExportMeshes(const UtfNode& Root, const std::string& OutPath, bool bAllLods)
+static int ExportMeshes(const UtfNode& Root, const std::string& OutPath, bool bAllLods, const std::string& MatPath)
 {
 	const UtfNode* Lib = FindChild(Root, "VMeshLibrary");
 	if (!Lib) { std::fprintf(stderr, "keine VMeshLibrary\n"); return 1; }
@@ -92,10 +95,31 @@ static int ExportMeshes(const UtfNode& Root, const std::string& OutPath, bool bA
 		Meshes.emplace_back(E->Name, std::move(M));
 	}
 	if (Meshes.empty()) { std::fprintf(stderr, "keine Meshes\n"); return 1; }
-	auto Glb = BuildGlb(Meshes);
+	std::map<uint32_t, GlbMaterial> Mats;
+	if (!MatPath.empty())
+	{
+		UtfFile MF = UtfFile::Load(MatPath);
+		if (!MF.Root) { std::fprintf(stderr, "Material-Datei: %s\n", MF.Error.c_str()); return 1; }
+		for (auto& [Crc, M] : ReadMaterials(*MF.Root))
+		{
+			GlbMaterial G; G.Name = M.Name; G.Texture = M.DiffuseTexture;
+			std::memcpy(G.Dc, M.Dc, sizeof(G.Dc));
+			Mats[Crc] = G;
+		}
+	}
+	auto Glb = BuildGlb(Meshes, MatPath.empty() ? nullptr : &Mats);
 	std::ofstream Out(OutPath, std::ios::binary);
 	Out.write((const char*)Glb.data(), Glb.size());
 	std::printf("%zu Meshes, %zu Bytes\n", Meshes.size(), Glb.size());
+	return 0;
+}
+
+static int ModelInfo(const UtfNode& Root)
+{
+	for (auto& [Crc, M] : ReadMaterials(Root))
+		std::printf("material %08x %s type=%s tex=%s\n", Crc, M.Name.c_str(), M.Type.c_str(), M.DiffuseTexture.c_str());
+	for (auto& H : ReadHardpoints(Root))
+		std::printf("hardpoint %s %s pos=%g,%g,%g\n", H.bRevolute ? "rev" : "fix", H.Name.c_str(), H.Position[0], H.Position[1], H.Position[2]);
 	return 0;
 }
 
@@ -115,11 +139,23 @@ int main(int argc, char** argv)
 		for (auto& S : F.Sections) std::printf("[%s] %zu\n", S.Name.c_str(), S.Entries.size());
 		return 0;
 	}
+	if (argc >= 4 && !std::strcmp(argv[1], "model") && !std::strcmp(argv[2], "info"))
+	{
+		UtfFile F = UtfFile::Load(argv[3]);
+		if (!F.Root) { std::fprintf(stderr, "Fehler: %s\n", F.Error.c_str()); return 1; }
+		return ModelInfo(*F.Root);
+	}
 	if (argc >= 5 && !std::strcmp(argv[1], "mesh") && !std::strcmp(argv[2], "export"))
 	{
 		UtfFile F = UtfFile::Load(argv[3]);
 		if (!F.Root) { std::fprintf(stderr, "Fehler: %s\n", F.Error.c_str()); return 1; }
-		return ExportMeshes(*F.Root, argv[4], argc >= 6 && !std::strcmp(argv[5], "--all-lods"));
+		bool bAll = false; std::string Mat;
+		for (int i = 5; i < argc; ++i)
+		{
+			if (!std::strcmp(argv[i], "--all-lods")) bAll = true;
+			else if (!std::strcmp(argv[i], "--mat") && i + 1 < argc) Mat = argv[++i];
+		}
+		return ExportMeshes(*F.Root, argv[4], bAll, Mat);
 	}
 	if (argc >= 5 && !std::strcmp(argv[1], "tex") && !std::strcmp(argv[2], "extract"))
 	{
@@ -128,6 +164,6 @@ int main(int argc, char** argv)
 		std::printf("%d Texturen\n", ExtractTextures(*F.Root, argv[4]));
 		return 0;
 	}
-	std::fprintf(stderr, "Aufruf:\n  fltool utf ls <datei>\n  fltool utf extract <datei> <zielordner>\n  fltool ini sections <datei>\n  fltool mesh export <datei> <out.glb> [--all-lods]\n  fltool tex extract <datei> <zielordner>\n");
+	std::fprintf(stderr, "Aufruf:\n  fltool utf ls <datei>\n  fltool utf extract <datei> <zielordner>\n  fltool ini sections <datei>\n  fltool mesh export <datei> <out.glb> [--all-lods] [--mat <datei.mat>]\n  fltool tex extract <datei> <zielordner>\n");
 	return 2;
 }
