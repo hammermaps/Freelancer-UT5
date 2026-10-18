@@ -1,0 +1,23 @@
+# Unreal generated
+/Binaries
+/DerivedDataCache
+/Intermediate
+/Saved
+/Build/*/
+.vs/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+/Makefile
+/Freelancer.code-workspace
+/.vscode/
+.ignore
+
+# External references and original game data: never commit
+/Reference/
+/Content/Imported/
+/Content/Developers/
+/Content/Collections/

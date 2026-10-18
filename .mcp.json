@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "graphiti": {
+      "type": "http",
+      "url": "http://10.8.0.28/mcp"
+    }
+  }
+}
