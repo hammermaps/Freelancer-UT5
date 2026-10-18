@@ -41,6 +41,17 @@ python3 -I Tools/tex_to_png.py <eingabeordner> <ausgabeordner>
 Wandelt die von `fltool tex extract` erzeugten `.dds`/`.tga` (inkl. 16-Bit-TGA, DXT) in PNG. Exit-Code 1, wenn Dateien fehlschlagen.
 Test: `python3 -I Tools/tests/test_tex_to_png.py`.
 
+## upscale_textures.py (Python, Pillow, numpy; Torch/spandrel nur mit Modell) – `Tools/upscale_textures.py`
+
+```
+python3 -I Tools/upscale_textures.py <png-ordner> <ausgabe> --model GameData/Work/Freelancer-Textures/models/RealESRGAN_x4plus.pth
+python3 -I Tools/upscale_textures.py <png-ordner> <ausgabe> --no-ml     # nur Lanczos, ohne GPU
+```
+Je `name.png` entstehen `name.png` (hochskaliert, Alpha bleibt), `name_n.png` (Normal Map aus der Helligkeit, OpenGL-Konvention), `name_r.png` (Roughness), `name_m.png` (Metallic, vorerst 0; Feintuning pro Material im Editor).
+Modelle: Real-ESRGAN x4plus, 4x-PBRify, 4xTextures_GTAV (liegen in `GameData/Work/Freelancer-Textures/models/`); `GameData/Work/Freelancer-Textures/upscale_batch.py` bleibt als Vergleichs-/Auswahl-Skript.
+Umgebung: lokale venv `~/UEBuild/pyenv` (`python3 -m venv --system-site-packages ~/UEBuild/pyenv && ~/UEBuild/pyenv/bin/pip install numpy`); für das KI-Modell zusätzlich `torch` (CUDA, RTX 5060 mit 8 GB) und `spandrel` installieren.
+Test: `~/UEBuild/pyenv/bin/python -I Tools/tests/test_upscale_textures.py`.
+
 ## Typischer Ablauf: Schiff nach Blender
 
 ```
@@ -54,5 +65,5 @@ Erzeugt `/Game/Freelancer/Maps/L_Test_Space` im Editor (`UnrealEditor-Cmd Freela
 
 ## Geplant
 
-- Upscaling-Skript (Real-ESRGAN/PBRify) aus `GameData/Work/Freelancer-Textures/upscale_batch.py` nach `Tools/`, mit Ableitung von Normal/Roughness/Metallic/Emissive.
+- Torch/spandrel in der venv einrichten und das KI-Upscaling mit Modell auf der GPU erproben; Emissive-Ableitung; Qualitätsvergleich der Modelle.
 - Manifest-Werkzeug (alle Schiffe/Stationen mit ihren Dateien), Loose-/Sphere-Konstrukte, animierte Rev/Pris-Posen, Wireframes (VMeshWire).
