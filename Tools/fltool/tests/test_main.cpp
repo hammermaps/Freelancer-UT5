@@ -4,6 +4,7 @@
 #include "Utf.h"
 #include "Vms.h"
 #include <cstdio>
+#include <cmath>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -192,12 +193,97 @@ static void TestModel()
 	CHECK(std::string((const char*)NoMat.data(), NoMat.size()).find("\"materials\"") == std::string::npos);
 }
 
+static void TestCmp()
+{
+	// Konstrukte: ein Fix- und ein Rev-Datensatz
+	auto Root = Dir("/");
+	auto Cmpnd = Dir("Cmpnd");
+	auto Cons = Dir("Cons");
+	std::vector<uint8_t> Fix(176, 0), Rev(208, 0);
+	std::strcpy((char*)Fix.data(), "Root");
+	std::strcpy((char*)Fix.data() + 64, "Wing");
+	float FixData[12] = {1, 2, 3, 0, 1, 0, -1, 0, 0, 0, 0, 1}; // Origin + 3x3: 90 Grad um Z
+	std::memcpy(Fix.data() + 128, FixData, 48);
+	std::strcpy((char*)Rev.data(), "Root");
+	std::strcpy((char*)Rev.data() + 64, "Door");
+	float Mm[2] = {0.0f, 1.9f};
+	std::memcpy(Rev.data() + 200, Mm, 8);
+	Cons->Children.push_back(Leaf("Fix", Fix.data(), Fix.size()));
+	Cons->Children.push_back(Leaf("Rev", Rev.data(), Rev.size()));
+	Cons->Children.push_back(Leaf("Loose", Fix.data(), 10));  // wird uebersprungen
+	auto Trunc = std::vector<uint8_t>(100, 0);
+	Cons->Children.push_back(Leaf("Pris", Trunc.data(), Trunc.size())); // zu kurz -> nichts
+	Cmpnd->Children.push_back(std::move(Cons));
+	auto Part = Dir("Part_wing");
+	Part->Children.push_back(Leaf("Object name", "Wing\0", 5));
+	Part->Children.push_back(Leaf("File name", "wing.3db\0", 9));
+	Cmpnd->Children.push_back(std::move(Part));
+	Cmpnd->Children.push_back(Dir("Cons2"));                   // kein Teil
+	Root->Children.push_back(std::move(Cmpnd));
+	auto Cs = ReadConstructs(*Root);
+	CHECK(Cs.size() == 2);
+	CHECK(Cs[0].Kind == FlConstruct::Fix && Cs[0].Parent == "Root" && Cs[0].Child == "Wing" && Cs[0].Origin[1] == 2.0f);
+	CHECK(Cs[1].Kind == FlConstruct::Rev && Cs[1].Child == "Door" && Cs[1].Max == 1.9f);
+	auto Ps = ReadParts(*Root);
+	CHECK(Ps.size() == 1 && Ps[0].Object == "Wing" && Ps[0].File == "wing.3db");
+
+	// Rotation: 90 Grad um Z => Quaternion (0,0,sin45,cos45)
+	float Q[4];
+	float Rz[9] = {0, -1, 0, 1, 0, 0, 0, 0, 1};
+	RotationToQuat(Rz, Q);
+	CHECK(std::fabs(Q[2] - 0.70710678f) < 1e-4f && std::fabs(Q[3] - 0.70710678f) < 1e-4f && std::fabs(Q[0]) < 1e-4f);
+	float Id[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+	RotationToQuat(Id, Q);
+	CHECK(Q[3] == 1.0f && Q[0] == 0.0f);
+	float Rx180[9] = {1, 0, 0, 0, -1, 0, 0, 0, -1};
+	RotationToQuat(Rx180, Q);
+	CHECK(std::fabs(Q[0] - 1.0f) < 1e-4f);
+
+	// VMeshRef
+	auto Model = Dir("wing.3db");
+	auto ML = Dir("MultiLevel"); auto L0 = Dir("Level0"); auto VP = Dir("VMeshPart");
+	std::vector<uint8_t> Ref(60, 0);
+	uint32_t Crc = 0x1234; uint16_t Start = 2, Cnt = 3;
+	std::memcpy(Ref.data() + 4, &Crc, 4); std::memcpy(Ref.data() + 16, &Start, 2); std::memcpy(Ref.data() + 18, &Cnt, 2);
+	VP->Children.push_back(Leaf("VMeshRef", Ref.data(), Ref.size()));
+	L0->Children.push_back(std::move(VP)); ML->Children.push_back(std::move(L0)); Model->Children.push_back(std::move(ML));
+	FlMeshRef R;
+	CHECK(ReadLevel0Ref(*Model, R) && R.MeshCrc == 0x1234 && R.StartMesh == 2 && R.MeshCount == 3);
+	CHECK(!ReadLevel0Ref(*Dir("x"), R));
+
+	// ExtractGroups: zwei Gruppen mit getrennten Vertices, zweite herausloesen
+	VmsMesh Src;
+	Src.Positions = {0,0,0, 1,0,0, 0,1,0, 5,5,5, 6,5,5, 5,6,5};
+	Src.Indices = {0,1,2, 3,4,5};
+	VmsGroup G1; G1.MaterialCrc = 1; G1.NumRefIndices = 3; G1.IndexStart = 0;
+	VmsGroup G2; G2.MaterialCrc = 2; G2.NumRefIndices = 3; G2.IndexStart = 3;
+	Src.Groups = {G1, G2};
+	VmsMesh Sub = ExtractGroups(Src, 1, 1);
+	CHECK(Sub.Groups.size() == 1 && Sub.Groups[0].MaterialCrc == 2 && Sub.Groups[0].IndexStart == 0);
+	CHECK(Sub.Positions.size() == 9 && Sub.Positions[0] == 5.0f && Sub.Indices.size() == 3 && Sub.Indices[2] == 2);
+	CHECK(ExtractGroups(Src, 5, 2).Groups.empty());          // ausserhalb
+	CHECK(ExtractGroups(Src, 0, 99).Groups.size() == 2);       // Ende wird begrenzt
+
+	// Szene mit Hierarchie
+	std::vector<SceneNode> Scene(2);
+	Scene[0].Name = "Root";
+	Scene[1].Name = "Child"; Scene[1].Parent = 0; Scene[1].T[0] = 4; Scene[1].bHasMesh = true; Scene[1].Mesh = Sub;
+	auto Glb = BuildGlbScene(Scene);
+	std::string Text((const char*)Glb.data(), Glb.size());
+	CHECK(Text.find("\"children\":[1]") != std::string::npos);
+	CHECK(Text.find("\"scenes\":[{\"nodes\":[0]}]") != std::string::npos);
+	CHECK(Text.find("\"translation\":[4,0,0]") != std::string::npos);
+	auto Empty = BuildGlbScene({});
+	CHECK(Empty.size() >= 20 && std::memcmp(Empty.data(), "glTF", 4) == 0);
+}
+
 int main()
 {
 	TestUtf();
 	TestIni();
 	TestVms();
 	TestModel();
+	TestCmp();
 	std::printf(Failures ? "%d Fehler\n" : "alle Tests bestanden\n", Failures);
 	return Failures ? 1 : 0;
 }

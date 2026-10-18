@@ -38,6 +38,22 @@ struct GlbMaterial
 	float Dc[3] = {1, 1, 1};
 };
 
+struct SceneNode
+{
+	std::string Name;
+	int Parent = -1;
+	float T[3] = {0, 0, 0};
+	float Q[4] = {0, 0, 0, 1}; // x y z w
+	bool bHasMesh = false;
+	VmsMesh Mesh;
+};
+
+// Kopiert Gruppen [FirstGroup, FirstGroup+GroupCount) mit neu nummerierten Vertices (Teilmesh eines Teils).
+VmsMesh ExtractGroups(const VmsMesh& Src, size_t FirstGroup, size_t GroupCount);
+
+// Szene mit Knotenhierarchie (Teile eines .cmp, Hardpoints als leere Knoten).
+std::vector<uint8_t> BuildGlbScene(const std::vector<SceneNode>& Scene, const std::map<uint32_t, GlbMaterial>* Mats = nullptr);
+
 // Schreibt Meshes als binaeres glTF (.glb). Pro VmsGroup eine Primitive; MaterialCrc steht in extras.
 std::vector<uint8_t> BuildGlb(const std::vector<std::pair<std::string, VmsMesh>>& Meshes, const std::map<uint32_t, GlbMaterial>* Mats = nullptr);
 }

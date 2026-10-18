@@ -74,14 +74,14 @@ std::string Esc(const std::string& S)
 }
 }
 
-std::vector<uint8_t> BuildGlb(const std::vector<std::pair<std::string, VmsMesh>>& Meshes, const std::map<uint32_t, GlbMaterial>* Mats)
+std::vector<uint8_t> BuildGlbScene(const std::vector<SceneNode>& Scene, const std::map<uint32_t, GlbMaterial>* Mats)
 {
 	std::map<uint32_t, int> MatIndex;
 	std::string MatJson, TexJson, ImgJson;
 	int TexCount = 0;
 	std::vector<uint8_t> Bin;
-	std::string Views, Accessors, MeshJson, Nodes, SceneNodes;
-	int View = 0, Acc = 0;
+	std::string Views, Accessors, MeshJson, NodesJson, RootNodes;
+	int View = 0, Acc = 0, MeshCount = 0;
 	auto AddView = [&](size_t Off, size_t Len, int Target) {
 		if (View) Views += ",";
 		Views += "{\"buffer\":0,\"byteOffset\":" + std::to_string(Off) + ",\"byteLength\":" + std::to_string(Len) + ",\"target\":" + std::to_string(Target) + "}";
@@ -92,79 +92,140 @@ std::vector<uint8_t> BuildGlb(const std::vector<std::pair<std::string, VmsMesh>>
 		Accessors += "{\"bufferView\":" + std::to_string(V) + ",\"componentType\":" + std::to_string(CompType) + ",\"count\":" + std::to_string(Count) + ",\"type\":\"" + Type + "\"" + MinMax + "}";
 		return Acc++;
 	};
-	for (size_t mi = 0; mi < Meshes.size(); ++mi)
+	for (size_t ni = 0; ni < Scene.size(); ++ni)
 	{
-		const VmsMesh& M = Meshes[mi].second;
-		size_t VC = M.Positions.size() / 3;
-		float Mn[3] = {1e30f, 1e30f, 1e30f}, Mx[3] = {-1e30f, -1e30f, -1e30f};
-		for (size_t v = 0; v < VC; ++v)
-			for (int a = 0; a < 3; ++a) { float X = M.Positions[v * 3 + a]; if (X < Mn[a]) Mn[a] = X; if (X > Mx[a]) Mx[a] = X; }
-		char Buf[256];
-		std::snprintf(Buf, sizeof(Buf), ",\"min\":[%.6g,%.6g,%.6g],\"max\":[%.6g,%.6g,%.6g]", Mn[0], Mn[1], Mn[2], Mx[0], Mx[1], Mx[2]);
-
-		size_t Off = Bin.size(); Append(Bin, M.Positions);
-		int PosAcc = AddAcc(AddView(Off, Bin.size() - Off, 34962), 5126, VC, "VEC3", VC ? Buf : "");
-		int NrmAcc = -1, UvAcc = -1;
-		if (!M.Normals.empty()) { Off = Bin.size(); Append(Bin, M.Normals); NrmAcc = AddAcc(AddView(Off, Bin.size() - Off, 34962), 5126, VC, "VEC3"); }
-		if (!M.Uv0.empty()) { Off = Bin.size(); Append(Bin, M.Uv0); UvAcc = AddAcc(AddView(Off, Bin.size() - Off, 34962), 5126, VC, "VEC2"); }
-		std::string Prims;
-		for (auto& G : M.Groups)
+		const SceneNode& SN = Scene[ni];
+		int MeshIdx = -1;
+		if (SN.bHasMesh && !SN.Mesh.Positions.empty())
 		{
-			size_t Count = G.NumRefIndices - G.NumRefIndices % 3;
-			if (!Count) continue;
-			std::vector<uint16_t> Idx(M.Indices.begin() + G.IndexStart, M.Indices.begin() + G.IndexStart + Count);
-			Pad4(Bin, 0);
-			Off = Bin.size(); Append(Bin, Idx);
-			int IdxAcc = AddAcc(AddView(Off, Bin.size() - Off, 34963), 5123, Count, "SCALAR");
-			if (!Prims.empty()) Prims += ",";
-			Prims += "{\"attributes\":{\"POSITION\":" + std::to_string(PosAcc);
-			if (NrmAcc >= 0) Prims += ",\"NORMAL\":" + std::to_string(NrmAcc);
-			if (UvAcc >= 0) Prims += ",\"TEXCOORD_0\":" + std::to_string(UvAcc);
-			Prims += "},\"indices\":" + std::to_string(IdxAcc);
-			if (Mats)
+			const VmsMesh& M = SN.Mesh;
+			size_t VC = M.Positions.size() / 3;
+			float Mn[3] = {1e30f, 1e30f, 1e30f}, Mx[3] = {-1e30f, -1e30f, -1e30f};
+			for (size_t v = 0; v < VC; ++v)
+				for (int a = 0; a < 3; ++a) { float X = M.Positions[v * 3 + a]; if (X < Mn[a]) Mn[a] = X; if (X > Mx[a]) Mx[a] = X; }
+			char Buf[256];
+			std::snprintf(Buf, sizeof(Buf), ",\"min\":[%.6g,%.6g,%.6g],\"max\":[%.6g,%.6g,%.6g]", Mn[0], Mn[1], Mn[2], Mx[0], Mx[1], Mx[2]);
+			size_t Off = Bin.size(); Append(Bin, M.Positions);
+			int PosAcc = AddAcc(AddView(Off, Bin.size() - Off, 34962), 5126, VC, "VEC3", Buf);
+			int NrmAcc = -1, UvAcc = -1;
+			if (!M.Normals.empty()) { Off = Bin.size(); Append(Bin, M.Normals); NrmAcc = AddAcc(AddView(Off, Bin.size() - Off, 34962), 5126, VC, "VEC3"); }
+			if (!M.Uv0.empty()) { Off = Bin.size(); Append(Bin, M.Uv0); UvAcc = AddAcc(AddView(Off, Bin.size() - Off, 34962), 5126, VC, "VEC2"); }
+			std::string Prims;
+			for (auto& G : M.Groups)
 			{
-				auto Found = Mats->find(G.MaterialCrc);
-				if (Found != Mats->end())
+				size_t Count = G.NumRefIndices - G.NumRefIndices % 3;
+				if (!Count) continue;
+				std::vector<uint16_t> Idx(M.Indices.begin() + G.IndexStart, M.Indices.begin() + G.IndexStart + Count);
+				Pad4(Bin, 0);
+				Off = Bin.size(); Append(Bin, Idx);
+				int IdxAcc = AddAcc(AddView(Off, Bin.size() - Off, 34963), 5123, Count, "SCALAR");
+				if (!Prims.empty()) Prims += ",";
+				Prims += "{\"attributes\":{\"POSITION\":" + std::to_string(PosAcc);
+				if (NrmAcc >= 0) Prims += ",\"NORMAL\":" + std::to_string(NrmAcc);
+				if (UvAcc >= 0) Prims += ",\"TEXCOORD_0\":" + std::to_string(UvAcc);
+				Prims += "},\"indices\":" + std::to_string(IdxAcc);
+				if (Mats)
 				{
-					auto Ins = MatIndex.emplace(G.MaterialCrc, (int)MatIndex.size());
-					if (Ins.second)
+					auto Found = Mats->find(G.MaterialCrc);
+					if (Found != Mats->end())
 					{
-						const GlbMaterial& GM = Found->second;
-						char C[160];
-						std::snprintf(C, sizeof(C), "\"baseColorFactor\":[%.4g,%.4g,%.4g,1]", GM.Dc[0], GM.Dc[1], GM.Dc[2]);
-						std::string Pbr = std::string("{") + C;
-						if (!GM.Texture.empty())
+						auto Ins = MatIndex.emplace(G.MaterialCrc, (int)MatIndex.size());
+						if (Ins.second)
 						{
-							std::string Base = GM.Texture;
-							size_t Dot = Base.rfind('.');
-							if (Dot != std::string::npos) Base.resize(Dot);
-							if (TexCount) { TexJson += ","; ImgJson += ","; }
-							ImgJson += "{\"uri\":\"" + Esc(Base) + ".png\"}";
-							TexJson += "{\"source\":" + std::to_string(TexCount) + "}";
-							Pbr += ",\"baseColorTexture\":{\"index\":" + std::to_string(TexCount++) + "}";
+							const GlbMaterial& GM = Found->second;
+							char C[160];
+							std::snprintf(C, sizeof(C), "\"baseColorFactor\":[%.4g,%.4g,%.4g,1]", GM.Dc[0], GM.Dc[1], GM.Dc[2]);
+							std::string Pbr = std::string("{") + C;
+							if (!GM.Texture.empty())
+							{
+								std::string Base = GM.Texture;
+								size_t Dot = Base.rfind('.');
+								if (Dot != std::string::npos) Base.resize(Dot);
+								if (TexCount) { TexJson += ","; ImgJson += ","; }
+								ImgJson += "{\"uri\":\"" + Esc(Base) + ".png\"}";
+								TexJson += "{\"source\":" + std::to_string(TexCount) + "}";
+								Pbr += ",\"baseColorTexture\":{\"index\":" + std::to_string(TexCount++) + "}";
+							}
+							Pbr += ",\"metallicFactor\":0,\"roughnessFactor\":1}";
+							if (!MatJson.empty()) MatJson += ",";
+							MatJson += "{\"name\":\"" + Esc(GM.Name) + "\",\"pbrMetallicRoughness\":" + Pbr + "}";
 						}
-						Pbr += ",\"metallicFactor\":0,\"roughnessFactor\":1}";
-						if (!MatJson.empty()) MatJson += ",";
-						MatJson += "{\"name\":\"" + Esc(GM.Name) + "\",\"pbrMetallicRoughness\":" + Pbr + "}";
+						Prims += ",\"material\":" + std::to_string(Ins.first->second);
 					}
-					Prims += ",\"material\":" + std::to_string(Ins.first->second);
 				}
+				Prims += ",\"extras\":{\"materialCrc\":" + std::to_string(G.MaterialCrc) + "}}";
 			}
-			Prims += ",\"extras\":{\"materialCrc\":" + std::to_string(G.MaterialCrc) + "}}";
+			Pad4(Bin, 0);
+			if (MeshCount) MeshJson += ",";
+			MeshJson += "{\"name\":\"" + Esc(SN.Name) + "\",\"primitives\":[" + Prims + "]}";
+			MeshIdx = MeshCount++;
 		}
-		Pad4(Bin, 0);
-		if (mi) { MeshJson += ","; Nodes += ","; SceneNodes += ","; }
-		MeshJson += "{\"name\":\"" + Esc(Meshes[mi].first) + "\",\"primitives\":[" + Prims + "]}";
-		Nodes += "{\"name\":\"" + Esc(Meshes[mi].first) + "\",\"mesh\":" + std::to_string(mi) + "}";
-		SceneNodes += std::to_string(mi);
+		std::string Children;
+		for (size_t ci = 0; ci < Scene.size(); ++ci)
+			if (Scene[ci].Parent == (int)ni) { if (!Children.empty()) Children += ","; Children += std::to_string(ci); }
+		char Tr[256];
+		std::snprintf(Tr, sizeof(Tr), "\"translation\":[%.8g,%.8g,%.8g],\"rotation\":[%.8g,%.8g,%.8g,%.8g]", SN.T[0], SN.T[1], SN.T[2], SN.Q[0], SN.Q[1], SN.Q[2], SN.Q[3]);
+		if (ni) NodesJson += ",";
+		NodesJson += "{\"name\":\"" + Esc(SN.Name) + "\"," + Tr;
+		if (MeshIdx >= 0) NodesJson += ",\"mesh\":" + std::to_string(MeshIdx);
+		if (!Children.empty()) NodesJson += ",\"children\":[" + Children + "]";
+		NodesJson += "}";
+		if (SN.Parent < 0) { if (!RootNodes.empty()) RootNodes += ","; RootNodes += std::to_string(ni); }
 	}
-	std::string Json = "{\"asset\":{\"version\":\"2.0\",\"generator\":\"fltool\"},\"scene\":0,\"scenes\":[{\"nodes\":[" + SceneNodes + "]}],\"nodes\":[" + Nodes + "],\"meshes\":[" + MeshJson + "]" + (MatJson.empty() ? std::string() : ",\"materials\":[" + MatJson + "]") + (TexJson.empty() ? std::string() : ",\"textures\":[" + TexJson + "],\"images\":[" + ImgJson + "]") + ",\"accessors\":[" + Accessors + "],\"bufferViews\":[" + Views + "],\"buffers\":[{\"byteLength\":" + std::to_string(Bin.size()) + "}]}";
+	std::string Json = "{\"asset\":{\"version\":\"2.0\",\"generator\":\"fltool\"},\"scene\":0,\"scenes\":[{\"nodes\":[" + RootNodes + "]}],\"nodes\":[" + NodesJson + "]";
+	if (MeshCount) Json += ",\"meshes\":[" + MeshJson + "]";
+	if (!MatJson.empty()) Json += ",\"materials\":[" + MatJson + "]";
+	if (!TexJson.empty()) Json += ",\"textures\":[" + TexJson + "],\"images\":[" + ImgJson + "]";
+	if (Acc) Json += ",\"accessors\":[" + Accessors + "],\"bufferViews\":[" + Views + "],\"buffers\":[{\"byteLength\":" + std::to_string(Bin.size()) + "}]";
+	Json += "}";
 	while (Json.size() % 4) Json += ' ';
 	std::vector<uint8_t> Out;
 	auto W32 = [&](uint32_t V) { Out.insert(Out.end(), (uint8_t*)&V, (uint8_t*)&V + 4); };
-	W32(0x46546C67); W32(2); W32((uint32_t)(12 + 8 + Json.size() + 8 + Bin.size()));
+	bool bBin = !Bin.empty();
+	W32(0x46546C67); W32(2); W32((uint32_t)(12 + 8 + Json.size() + (bBin ? 8 + Bin.size() : 0)));
 	W32((uint32_t)Json.size()); W32(0x4E4F534A); Out.insert(Out.end(), Json.begin(), Json.end());
-	W32((uint32_t)Bin.size()); W32(0x004E4942); Out.insert(Out.end(), Bin.begin(), Bin.end());
+	if (bBin) { W32((uint32_t)Bin.size()); W32(0x004E4942); Out.insert(Out.end(), Bin.begin(), Bin.end()); }
+	return Out;
+}
+
+std::vector<uint8_t> BuildGlb(const std::vector<std::pair<std::string, VmsMesh>>& Meshes, const std::map<uint32_t, GlbMaterial>* Mats)
+{
+	std::vector<SceneNode> Scene;
+	for (auto& [Name, M] : Meshes)
+	{
+		SceneNode N;
+		N.Name = Name; N.bHasMesh = true; N.Mesh = M;
+		Scene.push_back(std::move(N));
+	}
+	return BuildGlbScene(Scene, Mats);
+}
+
+VmsMesh ExtractGroups(const VmsMesh& Src, size_t FirstGroup, size_t GroupCount)
+{
+	VmsMesh Out;
+	Out.Fvf = Src.Fvf; Out.Stride = Src.Stride; Out.bNormal = Src.bNormal; Out.bDiffuse = Src.bDiffuse; Out.TexCoords = Src.TexCoords;
+	std::map<uint16_t, uint16_t> Remap;
+	for (size_t g = FirstGroup; g < FirstGroup + GroupCount && g < Src.Groups.size(); ++g)
+	{
+		const VmsGroup& G = Src.Groups[g];
+		VmsGroup NG = G;
+		NG.IndexStart = (uint32_t)Out.Indices.size();
+		for (uint32_t i = 0; i < G.NumRefIndices; ++i)
+		{
+			uint16_t Old = Src.Indices[G.IndexStart + i];
+			auto It = Remap.find(Old);
+			if (It == Remap.end())
+			{
+				uint16_t New = (uint16_t)(Out.Positions.size() / 3);
+				It = Remap.emplace(Old, New).first;
+				Out.Positions.insert(Out.Positions.end(), Src.Positions.begin() + Old * 3, Src.Positions.begin() + Old * 3 + 3);
+				if (!Src.Normals.empty()) Out.Normals.insert(Out.Normals.end(), Src.Normals.begin() + Old * 3, Src.Normals.begin() + Old * 3 + 3);
+				if (!Src.Uv0.empty()) Out.Uv0.insert(Out.Uv0.end(), Src.Uv0.begin() + Old * 2, Src.Uv0.begin() + Old * 2 + 2);
+			}
+			Out.Indices.push_back(It->second);
+		}
+		Out.Groups.push_back(NG);
+	}
 	return Out;
 }
 }

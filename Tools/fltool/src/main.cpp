@@ -2,7 +2,8 @@
 //   fltool utf ls <datei>                 Baum ausgeben
 //   fltool utf extract <datei> <zielordner>  alle Blatt-Daten als Dateien schreiben
 //   fltool ini sections <datei>              Sektionen mit Anzahl der Eintraege
-//   fltool model info <datei>\n  fltool mesh export <datei> <out.glb> [--all-lods] [--mat <datei.mat>]  VMeshData nach glTF (LOD0, sonst alle)
+//   fltool cmp export <datei.cmp> <out.glb> [--mat <datei.mat>]  Teile mit Hierarchie, Hardpoints als Knoten
+//   fltool cmp export <datei.cmp> <out.glb> [--mat <datei.mat>]\n  fltool model info <datei>\n  fltool mesh export <datei> <out.glb> [--all-lods] [--mat <datei.mat>]  VMeshData nach glTF (LOD0, sonst alle)
 //   fltool model info <datei>                Materialien (CRC, Typ, Textur) und Hardpoints
 //   fltool tex extract <datei> <zielordner>  je Textur die groesste MIP-Stufe als .dds/.tga schreiben
 #include "Ini.h"
@@ -123,6 +124,74 @@ static int ModelInfo(const UtfNode& Root)
 	return 0;
 }
 
+// Exportiert ein .cmp als Szene: ein Knoten je Teil (Konstrukt-Transform), Hardpoints als leere Kindknoten.
+static int ExportCmp(const UtfNode& Root, const std::string& OutPath, const std::string& MatPath)
+{
+	const UtfNode* Lib = FindChild(Root, "VMeshLibrary");
+	std::map<uint32_t, VmsMesh> Meshes;
+	if (Lib)
+		for (auto& E : Lib->Children)
+		{
+			const UtfNode* D = FindChild(*E, "VMeshData");
+			VmsMesh M; std::string Err;
+			if (D && ParseVms(D->Data, M, Err)) Meshes[FlModelCrc(E->Name)] = std::move(M);
+		}
+	auto Parts = ReadParts(Root);
+	auto Cons = ReadConstructs(Root);
+	if (Parts.empty()) { std::fprintf(stderr, "keine Teile (kein Compound-Modell)\n"); return 1; }
+	std::vector<SceneNode> Scene;
+	std::map<std::string, int> ByObject;
+	for (auto& P : Parts)
+	{
+		SceneNode N; N.Name = P.Object;
+		if (const UtfNode* Model = FindChild(Root, P.File))
+		{
+			FlMeshRef Ref;
+			if (ReadLevel0Ref(*Model, Ref))
+			{
+				auto It = Meshes.find(Ref.MeshCrc);
+				if (It != Meshes.end()) { N.bHasMesh = true; N.Mesh = ExtractGroups(It->second, Ref.StartMesh, Ref.MeshCount); }
+			}
+		}
+		ByObject[Lower(P.Object)] = (int)Scene.size();
+		Scene.push_back(std::move(N));
+	}
+	for (auto& C : Cons)
+	{
+		auto Ch = ByObject.find(Lower(C.Child)), Pa = ByObject.find(Lower(C.Parent));
+		if (Ch == ByObject.end()) continue;
+		SceneNode& N = Scene[Ch->second];
+		if (Pa != ByObject.end() && Pa->second != Ch->second) N.Parent = Pa->second;
+		std::memcpy(N.T, C.Origin, 12);
+		RotationToQuat(C.Rotation, N.Q);
+	}
+	size_t PartCount = Scene.size();
+	for (size_t i = 0; i < PartCount; ++i)
+	{
+		const UtfNode* Model = FindChild(Root, Parts[i].File);
+		if (!Model) continue;
+		for (auto& H : ReadHardpoints(*Model))
+		{
+			SceneNode N; N.Name = "HP_" + H.Name; N.Parent = (int)i;
+			std::memcpy(N.T, H.Position, 12);
+			RotationToQuat(H.Orientation, N.Q);
+			Scene.push_back(std::move(N));
+		}
+	}
+	std::map<uint32_t, GlbMaterial> Mats;
+	if (!MatPath.empty())
+	{
+		UtfFile MF = UtfFile::Load(MatPath);
+		if (!MF.Root) { std::fprintf(stderr, "Material-Datei: %s\n", MF.Error.c_str()); return 1; }
+		for (auto& [Crc, M] : ReadMaterials(*MF.Root)) { GlbMaterial G; G.Name = M.Name; G.Texture = M.DiffuseTexture; std::memcpy(G.Dc, M.Dc, 12); Mats[Crc] = G; }
+	}
+	auto Glb = BuildGlbScene(Scene, MatPath.empty() ? nullptr : &Mats);
+	std::ofstream Out(OutPath, std::ios::binary);
+	Out.write((const char*)Glb.data(), Glb.size());
+	std::printf("%zu Teile, %zu Knoten, %zu Bytes\n", PartCount, Scene.size(), Glb.size());
+	return 0;
+}
+
 int main(int argc, char** argv)
 {
 	if (argc >= 4 && !std::strcmp(argv[1], "utf"))
@@ -138,6 +207,14 @@ int main(int argc, char** argv)
 		if (!F.bOk) { std::fprintf(stderr, "Fehler: %s\n", F.Error.c_str()); return 1; }
 		for (auto& S : F.Sections) std::printf("[%s] %zu\n", S.Name.c_str(), S.Entries.size());
 		return 0;
+	}
+	if (argc >= 5 && !std::strcmp(argv[1], "cmp") && !std::strcmp(argv[2], "export"))
+	{
+		UtfFile F = UtfFile::Load(argv[3]);
+		if (!F.Root) { std::fprintf(stderr, "Fehler: %s\n", F.Error.c_str()); return 1; }
+		std::string Mat;
+		for (int i = 5; i + 1 < argc; ++i) if (!std::strcmp(argv[i], "--mat")) Mat = argv[i + 1];
+		return ExportCmp(*F.Root, argv[4], Mat);
 	}
 	if (argc >= 4 && !std::strcmp(argv[1], "model") && !std::strcmp(argv[2], "info"))
 	{

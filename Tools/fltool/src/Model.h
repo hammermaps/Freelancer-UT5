@@ -32,4 +32,36 @@ struct FlHardpoint
 
 // "Hardpoints"/{Fixed|Revolute}/<name>/{Position, Orientation}
 std::vector<FlHardpoint> ReadHardpoints(const UtfNode& Root);
+
+struct FlConstruct
+{
+	enum EKind { Fix, Rev, Pris } Kind = Fix;
+	std::string Parent, Child;
+	float Origin[3] = {0, 0, 0};
+	float Offset[3] = {0, 0, 0};            // nur Rev/Pris
+	float Rotation[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1}; // 3x3 zeilenweise (Spaltenvektor-Konvention)
+	float Axis[3] = {0, 0, 0};              // nur Rev/Pris
+	float Min = 0, Max = 0;                 // nur Rev/Pris
+};
+
+// "Cmpnd"/"Cons"/{Fix,Rev,Pris}. Unbekannte Typen (Loose, Sphere) werden uebersprungen.
+std::vector<FlConstruct> ReadConstructs(const UtfNode& Root);
+
+struct FlPart
+{
+	std::string Object; // "Object name", Kind-Name im Konstrukt
+	std::string File;   // "File name", Knoten mit dem 3db-Inhalt im .cmp
+};
+std::vector<FlPart> ReadParts(const UtfNode& Root);
+
+struct FlMeshRef
+{
+	uint32_t MeshCrc = 0;
+	uint16_t StartMesh = 0, MeshCount = 0;
+};
+// Erste VMeshRef im Modell-Knoten ("MultiLevel"/"Level0"/"VMeshPart"/"VMeshRef"), sonst false.
+bool ReadLevel0Ref(const UtfNode& Model, FlMeshRef& Out);
+
+// 3x3 (zeilenweise) -> Quaternion x,y,z,w
+void RotationToQuat(const float R[9], float Q[4]);
 }
