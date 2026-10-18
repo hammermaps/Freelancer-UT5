@@ -1,11 +1,14 @@
 // fltool - Hilfswerkzeug fuer Freelancer-Dateiformate (Offline, nicht Teil des Spiels).
 //   fltool utf ls <datei>                 Baum ausgeben
 //   fltool utf extract <datei> <zielordner>  alle Blatt-Daten als Dateien schreiben
+//   fltool tex extract <datei> <zielordner>  je Textur die groesste MIP-Stufe als .dds/.tga schreiben
 #include "Utf.h"
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <algorithm>
 #include <fstream>
+#include <cctype>
 
 namespace fs = std::filesystem;
 using namespace fl;
@@ -35,6 +38,39 @@ static void Extract(const UtfNode& N, const fs::path& Dir)
 	}
 }
 
+
+static std::string Lower(std::string S) { std::transform(S.begin(), S.end(), S.begin(), [](unsigned char C) { return std::tolower(C); }); return S; }
+
+// Textur-Bibliothek: "Texture library"/<name>/{MIP0..n | MIPS}. Eintraege sind DDS oder TGA.
+static int ExtractTextures(const UtfNode& Root, const fs::path& Dir)
+{
+	const UtfNode* Lib = FindChild(Root, "Texture library");
+	if (!Lib) return 0;
+	fs::create_directories(Dir);
+	int Count = 0;
+	for (auto& T : Lib->Children)
+	{
+		const UtfNode* Best = nullptr;
+		for (auto& M : T->Children)
+		{
+			std::string N = Lower(M->Name);
+			if (N == "mips" || N == "mip0") { Best = M.get(); break; }
+			if (N.rfind("mip", 0) == 0 && (!Best || M->Data.size() > Best->Data.size())) Best = M.get();
+		}
+		if (!Best || Best->Data.size() < 4) continue;
+		bool bDds = std::memcmp(Best->Data.data(), "DDS ", 4) == 0;
+		std::string Base = T->Name;
+		for (auto& Ch : Base) if (Ch == '/' || Ch == '\\') Ch = '_';
+		std::string Low = Lower(Base);
+		for (const char* E : {".tga", ".dds"})
+			if (Low.size() > 4 && Low.compare(Low.size() - 4, 4, E) == 0) { Base.resize(Base.size() - 4); break; }
+		std::ofstream Out(Dir / (Base + (bDds ? ".dds" : ".tga")), std::ios::binary);
+		Out.write((const char*)Best->Data.data(), Best->Data.size());
+		++Count;
+	}
+	return Count;
+}
+
 int main(int argc, char** argv)
 {
 	if (argc >= 4 && !std::strcmp(argv[1], "utf"))
@@ -44,6 +80,13 @@ int main(int argc, char** argv)
 		if (!std::strcmp(argv[2], "ls")) { Print(*F.Root, 0); return 0; }
 		if (!std::strcmp(argv[2], "extract") && argc >= 5) { Extract(*F.Root, argv[4]); return 0; }
 	}
-	std::fprintf(stderr, "Aufruf:\n  fltool utf ls <datei>\n  fltool utf extract <datei> <zielordner>\n");
+	if (argc >= 5 && !std::strcmp(argv[1], "tex") && !std::strcmp(argv[2], "extract"))
+	{
+		UtfFile F = UtfFile::Load(argv[3]);
+		if (!F.Root) { std::fprintf(stderr, "Fehler: %s\n", F.Error.c_str()); return 1; }
+		std::printf("%d Texturen\n", ExtractTextures(*F.Root, argv[4]));
+		return 0;
+	}
+	std::fprintf(stderr, "Aufruf:\n  fltool utf ls <datei>\n  fltool utf extract <datei> <zielordner>\n  fltool tex extract <datei> <zielordner>\n");
 	return 2;
 }
