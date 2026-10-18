@@ -2,9 +2,11 @@
 //   fltool utf ls <datei>                 Baum ausgeben
 //   fltool utf extract <datei> <zielordner>  alle Blatt-Daten als Dateien schreiben
 //   fltool ini sections <datei>              Sektionen mit Anzahl der Eintraege
+//   fltool mesh export <datei> <out.glb> [--all-lods]  VMeshData nach glTF (LOD0, sonst alle)
 //   fltool tex extract <datei> <zielordner>  je Textur die groesste MIP-Stufe als .dds/.tga schreiben
 #include "Ini.h"
 #include "Utf.h"
+#include "Vms.h"
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -73,6 +75,30 @@ static int ExtractTextures(const UtfNode& Root, const fs::path& Dir)
 	return Count;
 }
 
+// Sammelt VMeshData-Knoten ("VMeshLibrary"/<name>/VMeshData).
+static int ExportMeshes(const UtfNode& Root, const std::string& OutPath, bool bAllLods)
+{
+	const UtfNode* Lib = FindChild(Root, "VMeshLibrary");
+	if (!Lib) { std::fprintf(stderr, "keine VMeshLibrary\n"); return 1; }
+	std::vector<std::pair<std::string, VmsMesh>> Meshes;
+	for (auto& E : Lib->Children)
+	{
+		std::string L = Lower(E->Name);
+		if (!bAllLods && L.find("lod") != std::string::npos && L.find("lod0") == std::string::npos) continue;
+		const UtfNode* D = FindChild(*E, "VMeshData");
+		if (!D) continue;
+		VmsMesh M; std::string Err;
+		if (!ParseVms(D->Data, M, Err)) { std::fprintf(stderr, "%s: %s\n", E->Name.c_str(), Err.c_str()); return 1; }
+		Meshes.emplace_back(E->Name, std::move(M));
+	}
+	if (Meshes.empty()) { std::fprintf(stderr, "keine Meshes\n"); return 1; }
+	auto Glb = BuildGlb(Meshes);
+	std::ofstream Out(OutPath, std::ios::binary);
+	Out.write((const char*)Glb.data(), Glb.size());
+	std::printf("%zu Meshes, %zu Bytes\n", Meshes.size(), Glb.size());
+	return 0;
+}
+
 int main(int argc, char** argv)
 {
 	if (argc >= 4 && !std::strcmp(argv[1], "utf"))
@@ -89,6 +115,12 @@ int main(int argc, char** argv)
 		for (auto& S : F.Sections) std::printf("[%s] %zu\n", S.Name.c_str(), S.Entries.size());
 		return 0;
 	}
+	if (argc >= 5 && !std::strcmp(argv[1], "mesh") && !std::strcmp(argv[2], "export"))
+	{
+		UtfFile F = UtfFile::Load(argv[3]);
+		if (!F.Root) { std::fprintf(stderr, "Fehler: %s\n", F.Error.c_str()); return 1; }
+		return ExportMeshes(*F.Root, argv[4], argc >= 6 && !std::strcmp(argv[5], "--all-lods"));
+	}
 	if (argc >= 5 && !std::strcmp(argv[1], "tex") && !std::strcmp(argv[2], "extract"))
 	{
 		UtfFile F = UtfFile::Load(argv[3]);
@@ -96,6 +128,6 @@ int main(int argc, char** argv)
 		std::printf("%d Texturen\n", ExtractTextures(*F.Root, argv[4]));
 		return 0;
 	}
-	std::fprintf(stderr, "Aufruf:\n  fltool utf ls <datei>\n  fltool utf extract <datei> <zielordner>\n  fltool ini sections <datei>\n  fltool tex extract <datei> <zielordner>\n");
+	std::fprintf(stderr, "Aufruf:\n  fltool utf ls <datei>\n  fltool utf extract <datei> <zielordner>\n  fltool ini sections <datei>\n  fltool mesh export <datei> <out.glb> [--all-lods]\n  fltool tex extract <datei> <zielordner>\n");
 	return 2;
 }

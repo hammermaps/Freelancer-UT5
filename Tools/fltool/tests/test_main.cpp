@@ -1,6 +1,7 @@
 // Tests fuer flformats. Nur synthetische Daten, keine Originaldateien.
 #include "Ini.h"
 #include "Utf.h"
+#include "Vms.h"
 #include <cstdio>
 #include <cstring>
 
@@ -74,10 +75,54 @@ static void TestIni()
 	CHECK(!IniFile::Load("/nonexistent/x.ini").bOk);
 }
 
+
+// Ein Dreieck, FVF = XYZ|NORMAL|TEX1, ein Mesh-Header.
+static std::vector<uint8_t> MakeVms(uint16_t IndexValue2 = 2)
+{
+	std::vector<uint8_t> B;
+	auto P16 = [&](uint16_t V) { B.insert(B.end(), (uint8_t*)&V, (uint8_t*)&V + 2); };
+	auto P32 = [&](uint32_t V) { B.insert(B.end(), (uint8_t*)&V, (uint8_t*)&V + 4); };
+	auto PF = [&](float V) { B.insert(B.end(), (uint8_t*)&V, (uint8_t*)&V + 4); };
+	P32(1); P32(4);
+	P16(1); P16(3); P16(0x112); P16(3);          // Meshes, Indices, FVF, Vertices
+	P32(0xDEADBEEF); P16(0); P16(2); P16(3); P16(0xCC); // Header
+	P16(0); P16(1); P16(IndexValue2);
+	for (int v = 0; v < 3; ++v) { PF((float)v); PF(0); PF(0); PF(0); PF(0); PF(1); PF(0.5f * v); PF(1); }
+	return B;
+}
+
+static void TestVms()
+{
+	VmsMesh M; std::string Err;
+	CHECK(ParseVms(MakeVms(), M, Err));
+	CHECK(M.Stride == 32 && M.bNormal && !M.bDiffuse && M.TexCoords == 1);
+	CHECK(M.Positions.size() == 9 && M.Positions[3] == 1.0f);
+	CHECK(M.Normals.size() == 9 && M.Normals[5] == 1.0f);
+	CHECK(M.Uv0.size() == 6 && M.Uv0[2] == 0.5f);
+	CHECK(M.Groups.size() == 1 && M.Groups[0].MaterialCrc == 0xDEADBEEF && M.Groups[0].NumRefIndices == 3);
+
+	VmsMesh Bad;
+	CHECK(!ParseVms(MakeVms(7), Bad, Err));                 // Index ausserhalb
+	auto Cut = MakeVms(); Cut.resize(Cut.size() - 4);
+	CHECK(!ParseVms(Cut, Bad, Err));                         // abgeschnitten
+	CHECK(!ParseVms({}, Bad, Err));
+	auto NoXyz = MakeVms(); NoXyz[12] = 0x10;
+	CHECK(!ParseVms(NoXyz, Bad, Err));
+
+	auto Glb = BuildGlb({{"tri", M}});
+	CHECK(Glb.size() > 20 && std::memcmp(Glb.data(), "glTF", 4) == 0);
+	uint32_t Total; std::memcpy(&Total, Glb.data() + 8, 4);
+	CHECK(Total == Glb.size() && Glb.size() % 4 == 0);
+	std::string Text((const char*)Glb.data(), Glb.size());
+	CHECK(Text.find("\"materialCrc\":3735928559") != std::string::npos);
+	CHECK(Text.find("TEXCOORD_0") != std::string::npos);
+}
+
 int main()
 {
 	TestUtf();
 	TestIni();
+	TestVms();
 	std::printf(Failures ? "%d Fehler\n" : "alle Tests bestanden\n", Failures);
 	return Failures ? 1 : 0;
 }
