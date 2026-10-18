@@ -1,7 +1,9 @@
 // fltool - Hilfswerkzeug fuer Freelancer-Dateiformate (Offline, nicht Teil des Spiels).
 //   fltool utf ls <datei>                 Baum ausgeben
 //   fltool utf extract <datei> <zielordner>  alle Blatt-Daten als Dateien schreiben
+//   fltool ini sections <datei>              Sektionen mit Anzahl der Eintraege
 //   fltool tex extract <datei> <zielordner>  je Textur die groesste MIP-Stufe als .dds/.tga schreiben
+#include "Ini.h"
 #include "Utf.h"
 #include <cstdio>
 #include <cstring>
@@ -80,6 +82,13 @@ int main(int argc, char** argv)
 		if (!std::strcmp(argv[2], "ls")) { Print(*F.Root, 0); return 0; }
 		if (!std::strcmp(argv[2], "extract") && argc >= 5) { Extract(*F.Root, argv[4]); return 0; }
 	}
+	if (argc >= 4 && !std::strcmp(argv[1], "ini") && !std::strcmp(argv[2], "sections"))
+	{
+		IniFile F = IniFile::Load(argv[3]);
+		if (!F.bOk) { std::fprintf(stderr, "Fehler: %s\n", F.Error.c_str()); return 1; }
+		for (auto& S : F.Sections) std::printf("[%s] %zu\n", S.Name.c_str(), S.Entries.size());
+		return 0;
+	}
 	if (argc >= 5 && !std::strcmp(argv[1], "tex") && !std::strcmp(argv[2], "extract"))
 	{
 		UtfFile F = UtfFile::Load(argv[3]);
@@ -87,6 +96,6 @@ int main(int argc, char** argv)
 		std::printf("%d Texturen\n", ExtractTextures(*F.Root, argv[4]));
 		return 0;
 	}
-	std::fprintf(stderr, "Aufruf:\n  fltool utf ls <datei>\n  fltool utf extract <datei> <zielordner>\n  fltool tex extract <datei> <zielordner>\n");
+	std::fprintf(stderr, "Aufruf:\n  fltool utf ls <datei>\n  fltool utf extract <datei> <zielordner>\n  fltool ini sections <datei>\n  fltool tex extract <datei> <zielordner>\n");
 	return 2;
 }

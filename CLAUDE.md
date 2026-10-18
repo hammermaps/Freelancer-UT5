@@ -131,6 +131,11 @@ Nach dem Umzug `Makefile`/Projektdateien neu generieren (enthalten alte Pfade).
 - Dienste sprechen über das geteilte Modul `FreelancerProtocol` (versionierte Nachrichten). Spiel-Instanzen greifen nie direkt auf die Datenbank zu.
 - Öffentlicher Betrieb: Sicherheit (TLS/mTLS, Rate-Limits, Audit) von Anfang an mitdenken. **Keine Originaldaten in Builds, die verteilt werden**, solange die Rechtsfrage offen ist.
 - **Asset-Pipeline (PLAN.md Punkt 14, M1b):** Original importieren -> Texturen per Offline-Upscaling aufwerten (Normal/Roughness/Metallic/Emissive) -> eigene HD-Modelle (Nanite) nach Vorlage. Datensätze verweisen auf Mesh/Material, ein HD-Asset gleicher ID ersetzt das Original. Der Server lädt keine Meshes. Rechtlich: Ableitungen sind Microsoft-Werke, nicht verteilen.
+- **Tests sind Pflicht:** Zu jeder neuen Funktion, jedem Werkzeug und jedem Bugfix gehören Tests im selben Commit. Tests nutzen nur synthetische Daten (keine Originaldateien im Repo) und decken Fehlerfälle ab (kaputte/abgeschnittene Eingaben). Ein Commit ohne grüne Tests wird nicht gepusht.
+  - `Tools/fltool`: CTest, `cmake -S Tools/fltool -B ~/UEBuild/fltool && cmake --build ~/UEBuild/fltool && ctest --test-dir ~/UEBuild/fltool` (Tests in `tests/`).
+  - Python-Werkzeuge: `unittest` unter `Tools/tests/`, Aufruf `python3 -I Tools/tests/test_<name>.py`.
+  - UE-Code: Automation Tests (`IMPLEMENT_SIMPLE_AUTOMATION_TEST`) im Modul, Aufruf mit `UnrealEditor-Cmd Freelancer.uproject -ExecCmds="Automation RunTests Freelancer; Quit" -unattended -nullrhi`. Netcode/Replikation zusätzlich mit Functional Tests oder Mehr-Client-Läufen.
+  - Zusätzlich gegen die Originaldaten prüfen (lokal, nicht im Repo), z. B. Parser über alle `GameData/FL`-Dateien laufen lassen.
 - Eingabe über **Enhanced Input** (Input Actions + Mapping Contexts), nicht über Legacy-Axis-Mappings.
 - Große Distanzen: Large World Coordinates, `double`/`FVector` (UE5 ist standardmäßig double).
 

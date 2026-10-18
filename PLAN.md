@@ -156,7 +156,7 @@ Jeder Meilenstein endet **mit mehreren verbundenen Clients**, nicht mit einem lo
 - Pilot: 1–2 Schiffe plus 1 Station in Stufe 2, danach Stufe 3 für das Starterschiff.
 - **Fertig, wenn:** Ein Schiff läuft im Spiel wahlweise mit Original- und mit HD-Textur/-Modell, ohne Codeänderung umschaltbar.
 - **Hilfswerkzeuge (`Tools/fltool`, C++17/CMake, offline):** Bibliothek `flformats` (UTF-Reader, später INI, VMesh, Texturen) + CLI `fltool` (`utf ls`, `utf extract`; geplant: `tex export` nach PNG, `mesh export` nach glTF, Manifest-Erzeugung). Die Bibliothek wird vom `FLImport` wiederverwendet. KI-Upscaling bleibt Python (`GameData/Work/Freelancer-Textures/upscale_batch.py`, Real-ESRGAN/PBRify via spandrel) und wandert nach `Tools/`.
-- Stand: UTF-Reader fertig, 400 von 400 Testdateien aus `GameData/FL/DATA` fehlerfrei gelesen.
+- Stand: UTF-Reader, INI-Parser (1252 von 1252 Original-INIs fehlerfrei) und Textur-Export fertig, mit Tests (`ctest`, `unittest`); UTF: 400 von 400 Testdateien aus `GameData/FL/DATA` fehlerfrei gelesen.
 
 ### M2 – Netzwerk-Flug (Wochen 4–8)
 - `AFLShip` + `UFLShipMovementComponent` mit Enhanced Input: Maussteuerung (Cursor-Offset), Schub, Strafe, Reverse, Cruise Engine.
