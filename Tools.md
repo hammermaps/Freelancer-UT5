@@ -49,7 +49,7 @@ python3 -I Tools/upscale_textures.py <png-ordner> <ausgabe> --no-ml     # nur La
 ```
 Je `name.png` entstehen `name.png` (hochskaliert, Alpha bleibt), `name_n.png` (Normal Map aus der Helligkeit, OpenGL-Konvention), `name_r.png` (Roughness), `name_m.png` (Metallic, vorerst 0; Feintuning pro Material im Editor).
 Modelle: Real-ESRGAN x4plus, 4x-PBRify, 4xTextures_GTAV (liegen in `GameData/Work/Freelancer-Textures/models/`); `GameData/Work/Freelancer-Textures/upscale_batch.py` bleibt als Vergleichs-/Auswahl-Skript.
-Umgebung: lokale venv `~/UEBuild/pyenv` (`python3 -m venv --system-site-packages ~/UEBuild/pyenv && ~/UEBuild/pyenv/bin/pip install numpy`); für das KI-Modell zusätzlich `torch` (CUDA, RTX 5060 mit 8 GB) und `spandrel` installieren.
+Umgebung: lokale venv `~/UEBuild/pyenv` (`python3 -m venv --system-site-packages ~/UEBuild/pyenv && ~/UEBuild/pyenv/bin/pip install numpy`); Torch 2.14.1 (CUDA 13) und spandrel sind dort installiert (`pip install torch spandrel --index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://pypi.org/simple`); GPU RTX 5060 (8 GB) wird erkannt, ohne CUDA fällt das Skript auf die CPU zurück. Getestet mit Real-ESRGAN x4plus und 4x-PBRify (3 Texturen, ca. 11 s inkl. Modellladen).
 Test: `~/UEBuild/pyenv/bin/python -I Tools/tests/test_upscale_textures.py`.
 
 ## Typischer Ablauf: Schiff nach Blender
@@ -65,5 +65,5 @@ Erzeugt `/Game/Freelancer/Maps/L_Test_Space` im Editor (`UnrealEditor-Cmd Freela
 
 ## Geplant
 
-- Torch/spandrel in der venv einrichten und das KI-Upscaling mit Modell auf der GPU erproben; Emissive-Ableitung; Qualitätsvergleich der Modelle.
+- Emissive-Ableitung; Qualitätsvergleich der Modelle (Real-ESRGAN, PBRify, GTAV) an einer größeren Stichprobe; Stapel-Lauf über alle importierten Texturen.
 - Manifest-Werkzeug (alle Schiffe/Stationen mit ihren Dateien), Loose-/Sphere-Konstrukte, animierte Rev/Pris-Posen, Wireframes (VMeshWire).

@@ -24,6 +24,13 @@ class Derive(unittest.TestCase):
         self.assertTrue((U.derive_metallic(bright) == 0).all())
 
 
+class Device(unittest.TestCase):
+    def test_fallback(self):
+        self.assertEqual(U.resolve_device('cuda', False), 'cpu')
+        self.assertEqual(U.resolve_device('cuda', True), 'cuda')
+        self.assertEqual(U.resolve_device('cpu', True), 'cpu')
+
+
 class Pipeline(unittest.TestCase):
     def test_no_ml_writes_four_maps_and_keeps_alpha(self):
         with tempfile.TemporaryDirectory() as t:

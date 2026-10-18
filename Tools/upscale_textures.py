@@ -51,6 +51,11 @@ def to_rgb_alpha(im):
     return a[..., :3].astype(np.float32) / 255.0, a[..., 3]
 
 
+def resolve_device(requested, cuda_available):
+    """Faellt auf CPU zurueck, wenn CUDA gewuenscht, aber nicht verfuegbar ist."""
+    return 'cpu' if requested.startswith('cuda') and not cuda_available else requested
+
+
 def load_model(path, device):
     import torch
     import spandrel
@@ -60,7 +65,7 @@ def load_model(path, device):
 
 def ml_upscale(model_and_torch, im, device):
     model, torch = model_and_torch
-    x = torch.from_numpy(np.asarray(im.convert('RGB'))).permute(2, 0, 1).unsqueeze(0).float().to(device) / 255
+    x = torch.from_numpy(np.array(im.convert('RGB'))).permute(2, 0, 1).unsqueeze(0).float().to(device) / 255
     with torch.inference_mode():
         y = model(x)
     return Image.fromarray((y[0].clamp(0, 1).permute(1, 2, 0).cpu().numpy() * 255).round().astype(np.uint8))
@@ -95,7 +100,11 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if not a.no_ml and not a.model:
         ap.error('--model angeben oder --no-ml verwenden')
-    model = None if a.no_ml else load_model(a.model, a.device)
+    device = a.device
+    if not a.no_ml:
+        import torch
+        device = resolve_device(a.device, torch.cuda.is_available())
+    model = None if a.no_ml else load_model(a.model, device)
     src, dst = Path(a.src), Path(a.dst)
     dst.mkdir(parents=True, exist_ok=True)
     ok = bad = 0
@@ -103,7 +112,7 @@ def main(argv=None):
         try:
             rel = dst / f.relative_to(src).parent
             rel.mkdir(parents=True, exist_ok=True)
-            process(f, rel, model, a.scale, a.device)
+            process(f, rel, model, a.scale, device)
             ok += 1
         except Exception as e:
             bad += 1
