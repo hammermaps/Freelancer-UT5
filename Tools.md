@@ -66,6 +66,10 @@ Software-Darstellung einer `.glb` (z. B. von `fltool cmp export`) in drei Ansich
 2. Screenshot aus dem Spiel mit Verzögerung: `DISPLAY=:0 UnrealEditor Freelancer.uproject /Game/Freelancer/Maps/L_ShipView -game -windowed -ResX=1280 -ResY=720 -nosound -log -ExecCmds="r.HighResScreenshotDelay 600,HighResShot 1280x720"`. Das Bild landet in `~/UEBuild/Freelancer/Saved/Screenshots/LinuxEditor/`; der Prozess endet nicht von selbst (danach `pkill -x UnrealEditor`). Screenshots aus Originaldaten **nicht ins Repo** legen.
 3. Fallstricke, die zu schwarzen Bildern führten: (a) `EditorLevelLibrary.new_level` wechselte das Level nicht, die Actors landeten im Startlevel – `LevelEditorSubsystem.new_level` verwenden und das aktive Level prüfen; (b) Modell-Eigenschaft per Python mit dem geladenen Asset setzen, nicht mit `SoftObjectPath`; (c) statische Lichter sind ohne Lighting-Build schwarz – Mobilität `MOVABLE`; (d) Python-`Rotator` ist `(roll, pitch, yaw)`; (e) ohne `r.HighResScreenshotDelay` entsteht das Bild vor dem Shader-Kompilieren; (f) ältere Spielprozesse beenden, sie belegen die CPU.
 
+## accept_ship_load.sh – Abnahmetest M1
+
+`Tools/accept_ship_load.sh [Archive-Ordner]` startet den gekochten Server (`L_ShipView`, UDP 7777) und einen Client (`-nullrhi`), wartet und vergleicht die Log-Zeile `FLShipVisual …: Modell …, N Teile, N Meshes, N Hardpoints` beider Seiten. Bestanden = Zeilen gleich, mindestens ein `Join succeeded`, keine `LogOutputDevice: Error`-Zeilen. Voraussetzung: `Engine/cook_freelancer.sh` lief mit dem aktuellen Content (das Level-Skript erzeugt `L_ShipView`; der Cook-Aufruf enthält beide Karten). Exit-Code 0 = bestanden.
+
 ## Typischer Ablauf: Schiff nach Blender
 
 ```

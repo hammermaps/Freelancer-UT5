@@ -21,11 +21,26 @@ void AFLShipVisual::OnConstruction(const FTransform& Transform)
 	RebuildFromModel();
 }
 
+void AFLShipVisual::BeginPlay()
+{
+	Super::BeginPlay();
+	// Im gekochten Spiel laufen Konstruktionsskripte platzierter Actors nicht immer vor BeginPlay: Teile hier sicherstellen
+	if (PartComponents.IsEmpty())
+	{
+		RebuildFromModel();
+	}
+	UE_LOG(LogFLShipVisual, Display, TEXT("FLShipVisual BeginPlay %s: Modell gesetzt=%d, Teile=%d, Netzrolle=%d"),
+		*GetName(), !Model.IsNull(), PartComponents.Num(), (int32)GetLocalRole());
+}
+
 void AFLShipVisual::RebuildFromModel()
 {
-	for (UStaticMeshComponent* C : PartComponents)
+	// Vorhandene Teilkomponenten entfernen (auch solche, die ein aelterer Editor-Stand im Level gespeichert hat)
+	TArray<UStaticMeshComponent*> Existing;
+	GetComponents<UStaticMeshComponent>(Existing);
+	for (UStaticMeshComponent* C : Existing)
 	{
-		if (C)
+		if (C && C->GetName().StartsWith(TEXT("Part_")))
 		{
 			C->DestroyComponent();
 		}
@@ -42,6 +57,7 @@ void AFLShipVisual::RebuildFromModel()
 	{
 		const FFLModelPart& Part = Data->Parts[I];
 		UStaticMeshComponent* Comp = NewObject<UStaticMeshComponent>(this, FName(*FString::Printf(TEXT("Part_%s"), *Part.Name.ToString())));
+		Comp->SetFlags(RF_Transient); // aus den Daten abgeleitet: nicht im Level speichern (sonst Namenskollision im gekochten Spiel)
 		Comp->SetStaticMesh(Part.Mesh.LoadSynchronous());
 		Comp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		USceneComponent* Parent = (Part.ParentIndex >= 0 && Part.ParentIndex < I && PartComponents[Part.ParentIndex]) ? PartComponents[Part.ParentIndex].Get() : GetRootComponent();

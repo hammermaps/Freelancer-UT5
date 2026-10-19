@@ -37,6 +37,7 @@ public:
 	bool GetHardpointTransform(FName HardpointName, FTransform& OutWorld) const;
 
 	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void BeginPlay() override;
 
 private:
 	UPROPERTY(Transient)

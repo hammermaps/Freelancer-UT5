@@ -131,6 +131,7 @@ Standard-Werkzeug für Reverse Engineering der Originalprogramme (`GameData/FL/E
 - Kochen/Paketieren: `Engine/cook_freelancer.sh` (BuildCookRun für `LinuxServer` + `LinuxClient`, Ausgabe `~/UEBuild/Archive`). Nur neu paketieren: `Engine/cook_freelancer.sh -skipcook`. Der Cook braucht viel RAM: `NumUnusedShaderCompilingThreads=12` in `Config/DefaultEngine.ini` begrenzt die Shader-Worker (ohne Limit OOM bei 31 GB).
 - Server: `~/UEBuild/Archive/LinuxServer/FreelancerServer.sh -log -port=7777` (Map `L_Test_Space`, UDP 7777).
 - Client: `~/UEBuild/Archive/LinuxClient/FreelancerClient.sh 127.0.0.1:7777` (headless-Test mit `-nullrhi -nosound`).
+- Abnahme Schiff laden: `Tools/accept_ship_load.sh` (siehe Tools.md). Hinweis: vom Code abgeleitete Komponenten (z. B. `AFLShipVisual`-Teile) mit `RF_Transient` anlegen, sonst werden sie im Level gespeichert und kollidieren im gekochten Spiel („Replacing a loaded public object is not supported with cooked data“).
 - Verbindungstest: Server + 2 Clients, im Server-Log `Join succeeded` ×2, in den Client-Logs `Welcomed by server`. Die Konsolenausgabe ist gepuffert; die Logs stehen unter `<Archive>/Linux*/Freelancer/Saved/Logs/`.
 
 ## Neue Module anlegen (Checkliste, gelernt bei FreelancerFormats/FreelancerEditor)
