@@ -128,3 +128,56 @@ bool FFLImportedModelTest::RunTest(const FString& Parameters)
 	TestTrue(*FString::Printf(TEXT("Nase zeigt nach +X (Laenge %.0f > Hoehe %.0f)"), Size.X, Size.Z), Size.X > Size.Z);
 	return true;
 }
+
+#include "Data/FLSystemData.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLSystemImportTest, "Freelancer.Import.System",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLSystemImportTest::RunTest(const FString& Parameters)
+{
+	const char* Universe = "[system]\nnickname = Li01\npos = 0.5, -2\nstrid_name = 196609\nfile = Systems\\Li01\\Li01.ini\n[Base]\nnickname = Li01_01_Base\nsystem = Li01\n";
+	const char* System =
+		"[SystemInfo]\nnavmapscale = 1.5\n"
+		"[Object]\nnickname = Li01_01\nArchetype = planet_x\npos = 1000, 200, -3000\nrotate = 0, 90, 0\nbase = Li01_01_Base\nids_name = 7\n"
+		"[Object]\nnickname = Li01_to_Li02\nArchetype = jumpgate\npos = 0, 0, 0\ngoto = Li02, Li02_to_Li01, gate_tunnel\n"
+		"[zone]\nnickname = Zone_a\nshape = SPHERE\npos = 0, 0, 0\nsize = 4100\n"
+		"[zone]\nnickname = Zone_b\nshape = BOX\npos = 10, 0, 0\nsize = 100, 200, 300\n";
+	const fl::IniFile UIni = fl::IniFile::Parse(Universe), SIni = fl::IniFile::Parse(System);
+	const auto Sys = fl::ParseRecordsOfType(UIni, "system");
+	const auto Objects = fl::ParseRecordsOfType(SIni, "Object");
+	const auto Zones = fl::ParseRecordsOfType(SIni, "zone");
+	const auto Info = fl::ParseRecordsOfType(fl::IniFile::Parse("[SystemInfo]\nnickname = Li01\nnavmapscale = 1.5\n"), "SystemInfo");
+	if (Sys.size() != 1 || Objects.size() != 2 || Zones.size() != 2 || Info.size() != 1)
+	{
+		AddError(TEXT("Parser lieferte unerwartete Anzahl"));
+		return false;
+	}
+	UFLSystemData* D = NewObject<UFLSystemData>(GetTransientPackage());
+	UFLImportCommandlet::FillSystemData(D, Sys[0], Objects, Zones, &Info[0], {FName("Li01_01_Base")});
+	TestEqual(TEXT("Nickname"), D->Nickname, FName("Li01"));
+	TestEqual(TEXT("Karte x"), D->MapPosition.X, 0.5);
+	TestEqual(TEXT("Anzahl Objekte"), D->Objects.Num(), 2);
+	// Original (1000, 200, -3000) m -> Unreal x = 3000 m, y = 1000 m, z = 200 m in cm
+	TestEqual(TEXT("Position x (vorn)"), D->Objects[0].Position.X, 300000.0);
+	TestEqual(TEXT("Position y (rechts)"), D->Objects[0].Position.Y, 100000.0);
+	TestEqual(TEXT("Position z (oben)"), D->Objects[0].Position.Z, 20000.0);
+	TestEqual(TEXT("Archetyp"), D->Objects[0].Archetype, FName("planet_x"));
+	TestEqual(TEXT("Basis"), D->Objects[0].Base, FName("Li01_01_Base"));
+	TestFalse(TEXT("Drehung gesetzt"), D->Objects[0].Rotation.Equals(FQuat::Identity, 0.01));
+	TestEqual(TEXT("Sprungziel System"), D->Objects[1].GotoSystem, FName("Li02"));
+	TestEqual(TEXT("Sprungziel Objekt"), D->Objects[1].GotoObject, FName("Li02_to_Li01"));
+	TestEqual(TEXT("Zonen"), D->Zones.Num(), 2);
+	TestEqual(TEXT("Kugel Form"), D->Zones[0].Shape, EFLZoneShape::Sphere);
+	TestEqual(TEXT("Kugel Radius in cm"), D->Zones[0].Size.X, 410000.0);
+	TestEqual(TEXT("Box Form"), D->Zones[1].Shape, EFLZoneShape::Box);
+	TestEqual(TEXT("Box z-Achse (Original z=300 -> Unreal x)"), D->Zones[1].Size.X, 30000.0);
+	TestEqual(TEXT("Info"), D->Info.FindRef(FName("navmapscale")), FString(TEXT("1.5")));
+	TestEqual(TEXT("Basen"), D->Bases.Num(), 1);
+	bool bFound = false;
+	D->FindObjectOrDefault(FName("Li01_to_Li02"), bFound);
+	TestTrue(TEXT("Objektsuche"), bFound);
+	D->FindObjectOrDefault(FName("nope"), bFound);
+	TestFalse(TEXT("unbekanntes Objekt"), bFound);
+	return true;
+}

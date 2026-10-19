@@ -7,6 +7,9 @@
 #include "Data/FLGoodData.h"
 #include "Data/FLModelData.h"
 #include "Data/FLShipData.h"
+#include "Data/FLSystemData.h"
+#include "FlMath.h"
+#include "FlModel.h"
 #include "FLModelImporter.h"
 #include "FlRecords.h"
 #include "Misc/PackageName.h"
@@ -237,6 +240,177 @@ int32 UFLImportCommandlet::ImportGoods(const FString& DataDir)
 	return Count;
 }
 
+namespace
+{
+FVector ToUePos(const std::vector<float>& V)
+{
+	if (V.size() < 3) return FVector::ZeroVector;
+	const float In[3] = {V[0], V[1], V[2]};
+	float Out[3];
+	fl::FlToUePosition(In, Out);
+	return FVector(Out[0], Out[1], Out[2]);
+}
+
+FQuat ToUeRotation(const std::vector<float>& Euler)
+{
+	if (Euler.size() < 3) return FQuat::Identity;
+	const float E[3] = {Euler[0], Euler[1], Euler[2]};
+	float R[9], U[9];
+	fl::FlEulerToRotation(E, R);
+	fl::FlToUeRotation(R, U);
+	return FQuat(FMatrix(FPlane(U[0], U[3], U[6], 0), FPlane(U[1], U[4], U[7], 0), FPlane(U[2], U[5], U[8], 0), FPlane(0, 0, 0, 1)));
+}
+
+EFLZoneShape ToShape(const FString& S)
+{
+	if (S.Equals(TEXT("SPHERE"), ESearchCase::IgnoreCase)) return EFLZoneShape::Sphere;
+	if (S.Equals(TEXT("ELLIPSOID"), ESearchCase::IgnoreCase)) return EFLZoneShape::Ellipsoid;
+	if (S.Equals(TEXT("BOX"), ESearchCase::IgnoreCase)) return EFLZoneShape::Box;
+	if (S.Equals(TEXT("CYLINDER"), ESearchCase::IgnoreCase)) return EFLZoneShape::Cylinder;
+	if (S.Equals(TEXT("RING"), ESearchCase::IgnoreCase)) return EFLZoneShape::Ring;
+	return EFLZoneShape::Unknown;
+}
+
+FString Prop(const fl::FlRecord& R, const char* Key)
+{
+	const std::string* V = R.Find(Key);
+	return V ? FString(UTF8_TO_TCHAR(V->c_str())) : FString();
+}
+}
+
+void UFLImportCommandlet::FillSystemData(UFLSystemData* Data, const fl::FlRecord& U, const std::vector<fl::FlRecord>& Objects,
+	const std::vector<fl::FlRecord>& Zones, const fl::FlRecord* Info, const TArray<FName>& Bases)
+{
+	Data->Nickname = FName(UTF8_TO_TCHAR(U.Nickname.c_str()));
+	Data->IdsName = FCString::Atoi(*Prop(U, "strid_name"));
+	const std::vector<float> Map = fl::ParseFloats(U.Find("pos") ? *U.Find("pos") : std::string());
+	Data->MapPosition = Map.size() >= 2 ? FVector2D(Map[0], Map[1]) : FVector2D::ZeroVector;
+	FillProperties(Data->Properties, U);
+	Data->Bases = Bases;
+	Data->Info.Reset();
+	if (Info)
+	{
+		FillProperties(Data->Info, *Info);
+	}
+
+	Data->Objects.Reset();
+	for (const fl::FlRecord& O : Objects)
+	{
+		FFLSystemObject Out;
+		Out.Nickname = FName(UTF8_TO_TCHAR(O.Nickname.c_str()));
+		Out.Archetype = FName(*Prop(O, "archetype"));
+		Out.IdsName = FCString::Atoi(*Prop(O, "ids_name"));
+		Out.IdsInfo = FCString::Atoi(*Prop(O, "ids_info"));
+		Out.Position = ToUePos(fl::ParseFloats(O.Find("pos") ? *O.Find("pos") : std::string()));
+		Out.Rotation = ToUeRotation(fl::ParseFloats(O.Find("rotate") ? *O.Find("rotate") : std::string()));
+		Out.Base = FName(*Prop(O, "base"));
+		Out.Reputation = FName(*Prop(O, "reputation"));
+		Out.Loadout = FName(*Prop(O, "loadout"));
+		if (const std::string* Goto = O.Find("goto"))
+		{
+			TArray<FString> Parts;
+			FString(UTF8_TO_TCHAR(Goto->c_str())).ParseIntoArray(Parts, TEXT(","), true);
+			if (Parts.Num() >= 2)
+			{
+				Out.GotoSystem = FName(*Parts[0].TrimStartAndEnd());
+				Out.GotoObject = FName(*Parts[1].TrimStartAndEnd());
+			}
+		}
+		FillProperties(Out.Properties, O);
+		Data->Objects.Add(MoveTemp(Out));
+	}
+
+	Data->Zones.Reset();
+	for (const fl::FlRecord& Z : Zones)
+	{
+		FFLSystemZone Out;
+		Out.Nickname = FName(UTF8_TO_TCHAR(Z.Nickname.c_str()));
+		Out.Shape = ToShape(Prop(Z, "shape"));
+		Out.Position = ToUePos(fl::ParseFloats(Z.Find("pos") ? *Z.Find("pos") : std::string()));
+		Out.Rotation = ToUeRotation(fl::ParseFloats(Z.Find("rotate") ? *Z.Find("rotate") : std::string()));
+		std::vector<float> S = fl::ParseFloats(Z.Find("size") ? *Z.Find("size") : std::string());
+		if (S.size() == 1) { S = {S[0], S[0], S[0]}; }
+		if (S.size() >= 3)
+		{
+			// Groesse in Originalachsen (x, y, z) -> Unreal-Achsen, Meter -> cm
+			Out.Size = FVector(FMath::Abs(S[2]), FMath::Abs(S[0]), FMath::Abs(S[1])) * 100.0;
+		}
+		FillProperties(Out.Properties, Z);
+		Data->Zones.Add(MoveTemp(Out));
+	}
+}
+
+int32 UFLImportCommandlet::ImportUniverse(const FString& DataDir)
+{
+	FFLModelImporter Paths(DataDir); // nur fuer ResolvePath
+	const FString UniversePath = Paths.ResolvePath(TEXT("UNIVERSE/universe.ini"));
+	fl::IniFile Universe = LoadIni(UniversePath);
+	if (!Universe.bOk)
+	{
+		UE_LOG(LogFLImport, Error, TEXT("universe.ini: %s"), UTF8_TO_TCHAR(Universe.Error.c_str()));
+		return -1;
+	}
+	// Basen je System sammeln
+	TMap<FString, TArray<FName>> BasesBySystem;
+	for (const fl::FlRecord& B : fl::ParseRecordsOfType(Universe, "Base"))
+	{
+		BasesBySystem.FindOrAdd(Prop(B, "system").ToLower()).Add(FName(UTF8_TO_TCHAR(B.Nickname.c_str())));
+	}
+
+	int32 Count = 0;
+	for (const fl::FlRecord& S : fl::ParseRecordsOfType(Universe, "system"))
+	{
+		const FString File = Prop(S, "file");
+		const FString Path = Paths.ResolvePath(TEXT("UNIVERSE/") + File.Replace(TEXT("\\"), TEXT("/")));
+		std::vector<fl::FlRecord> Objects, Zones;
+		fl::FlRecord Info;
+		bool bHasInfo = false;
+		if (Path.IsEmpty())
+		{
+			UE_LOG(LogFLImport, Warning, TEXT("System-Datei nicht gefunden: %s"), *File);
+		}
+		else
+		{
+			fl::IniFile SysIni = LoadIni(Path);
+			if (!SysIni.bOk)
+			{
+				UE_LOG(LogFLImport, Warning, TEXT("%s: %s"), *Path, UTF8_TO_TCHAR(SysIni.Error.c_str()));
+				continue;
+			}
+			for (const fl::FlRecord& R : fl::ParseRecordsOfType(SysIni, "Object")) { Objects.push_back(R); }
+			for (const fl::FlRecord& R : fl::ParseRecordsOfType(SysIni, "zone")) { Zones.push_back(R); }
+			// SystemInfo hat einen nickname, Eintraege der Sektion werden als Info uebernommen
+			for (const fl::IniSection* Sec : SysIni.FindAll("SystemInfo"))
+			{
+				fl::FlRecord Rec;
+				Rec.Section = Sec->Name;
+				Rec.Nickname = S.Nickname;
+				for (const fl::IniEntry& E : Sec->Entries)
+				{
+					std::string J;
+					for (size_t i = 0; i < E.Values.size(); ++i) { if (i) J += ", "; J += E.Values[i]; }
+					std::string K = E.Key;
+					for (char& Ch : K) Ch = (char)tolower((unsigned char)Ch);
+					Rec.Props.emplace_back(K, J);
+				}
+				Info = Rec;
+				bHasInfo = true;
+			}
+		}
+		const FString Name = FString::Printf(TEXT("DA_System_%s"), UTF8_TO_TCHAR(S.Nickname.c_str()));
+		TArray<FName> Bases = BasesBySystem.FindRef(UTF8_TO_TCHAR(S.Nickname.c_str()));
+		Bases.Sort(FNameLexicalLess());
+		if (!CreateAndSave<UFLSystemData>(TEXT("/Game/Imported/Systems/") + Name, Name,
+			[&](UFLSystemData* D) { FillSystemData(D, S, Objects, Zones, bHasInfo ? &Info : nullptr, Bases); }))
+		{
+			return -1;
+		}
+		++Count;
+	}
+	UE_LOG(LogFLImport, Display, TEXT("%d Systeme importiert"), Count);
+	return Count;
+}
+
 int32 UFLImportCommandlet::Main(const FString& Params)
 {
 	FString DataDir;
@@ -247,7 +421,7 @@ int32 UFLImportCommandlet::Main(const FString& Params)
 	}
 	FString ModelFilter;
 	FParse::Value(*Params, TEXT("-models="), ModelFilter); // "all" oder Schiff-Nickname
-	if (ImportShips(DataDir, ModelFilter) < 0 || ImportEquipment(DataDir) < 0 || ImportGoods(DataDir) < 0)
+	if (ImportShips(DataDir, ModelFilter) < 0 || ImportUniverse(DataDir) < 0 || ImportEquipment(DataDir) < 0 || ImportGoods(DataDir) < 0)
 	{
 		return 2;
 	}

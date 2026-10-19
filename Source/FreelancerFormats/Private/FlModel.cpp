@@ -281,8 +281,8 @@ bool BuildModel(const UtfNode& Root, FlModel& Out, std::string& Error)
 				auto It = Meshes.find(Ref.MeshCrc);
 				if (It != Meshes.end())
 				{
-					MP.bHasMesh = true;
 					MP.Mesh = ExtractGroups(It->second, Ref.StartMesh, Ref.MeshCount, Ref.StartVertex);
+					MP.bHasMesh = !MP.Mesh.Positions.empty() && !MP.Mesh.Indices.empty(); // leere Teile (z. B. Root) haben kein Mesh
 				}
 			}
 			MP.Hardpoints = ReadHardpoints(*Model);

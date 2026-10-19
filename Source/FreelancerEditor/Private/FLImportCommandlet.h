@@ -3,12 +3,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include <vector>
 #include "Commandlets/Commandlet.h"
 #include "FLImportCommandlet.generated.h"
 
 class UFLShipData;
 class UFLEquipmentData;
 class UFLGoodData;
+class UFLSystemData;
 namespace fl { struct FlShipRecord; struct FlRecord; }
 
 /**
@@ -30,6 +32,10 @@ public:
 	static void FillEquipmentData(UFLEquipmentData* Data, const fl::FlRecord& Record);
 	static void FillGoodData(UFLGoodData* Data, const fl::FlRecord& Record);
 
+	/** Fuellt ein System aus dem [system]-Eintrag der universe.ini und den Records der System-INI (Objekte, Zonen, Info). */
+	static void FillSystemData(UFLSystemData* Data, const fl::FlRecord& UniverseEntry, const std::vector<fl::FlRecord>& Objects,
+		const std::vector<fl::FlRecord>& Zones, const fl::FlRecord* Info, const TArray<FName>& Bases);
+
 	/** Properties -> TMap: Schluessel klein, Wiederholungen als "key#2", "key#3". */
 	static void FillProperties(TMap<FName, FString>& Out, const fl::FlRecord& Record);
 
@@ -37,4 +43,5 @@ private:
 	int32 ImportShips(const FString& DataDir, const FString& ModelFilter);
 	int32 ImportEquipment(const FString& DataDir);
 	int32 ImportGoods(const FString& DataDir);
+	int32 ImportUniverse(const FString& DataDir);
 };

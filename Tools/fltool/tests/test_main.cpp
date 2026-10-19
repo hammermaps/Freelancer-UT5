@@ -1,6 +1,7 @@
 // Tests fuer flformats. Nur synthetische Daten, keine Originaldateien.
 #include "FlIni.h"
 #include "FlImage.h"
+#include "FlMath.h"
 #include "FlModel.h"
 #include "FlRecords.h"
 #include "FlShipData.h"
@@ -443,6 +444,7 @@ static void TestBuildModel()
 	CHECK(BuildModel(*Root, M, Err));
 	CHECK(M.Parts.size() == 2);
 	CHECK(M.Parts[0].Name == "Root" && !M.Parts[0].bHasMesh && M.Parts[0].Parent == -1);
+	CHECK(!M.Parts[0].bHasMesh && M.Parts[0].Mesh.Positions.empty());     // Teil ohne Datei: kein Mesh
 	CHECK(M.Parts[1].Name == "Wing" && M.Parts[1].Parent == 0 && M.Parts[1].Position[0] == 5.0f);
 	CHECK(M.Parts[1].bHasMesh && M.Parts[1].Mesh.Groups.size() == 1 && M.Parts[1].Mesh.Positions.size() == 9);
 	CHECK(M.Parts[1].Hardpoints.size() == 1 && M.Parts[1].Hardpoints[0].Position[2] == 3.0f);
@@ -504,6 +506,74 @@ static void TestVmsRelativeIndices()
 	VmsMesh Sub = ExtractGroups(Src, 0, 1, 3);
 	CHECK(Sub.Groups.size() == 1 && Sub.Positions.size() == 9 && Sub.Positions[0] == 3.0f && Sub.Positions[6] == 5.0f);
 	CHECK(ExtractGroups(Src, 0, 1, 4).Groups.empty());   // Versatz zu gross -> Gruppe ausgelassen
+	// Gruppen mit weniger als einem Dreieck liefern kein Mesh (haetten in der Engine ein leeres LOD ergeben)
+	VmsMesh Tiny;
+	Tiny.Positions = {0,0,0, 1,0,0, 2,0,0};
+	Tiny.Indices = {0, 1};
+	VmsGroup TG; TG.NumRefIndices = 2; TG.IndexStart = 0;
+	Tiny.Groups = {TG};
+	CHECK(ExtractGroups(Tiny, 0, 1).Groups.empty() && ExtractGroups(Tiny, 0, 1).Positions.empty());
+	// 4 Indizes: nur das ganze Dreieck bleibt
+	Tiny.Indices = {0, 1, 2, 0};
+	Tiny.Groups[0].NumRefIndices = 4;
+	VmsMesh Cut = ExtractGroups(Tiny, 0, 1);
+	CHECK(Cut.Indices.size() == 3 && Cut.Groups[0].NumRefIndices == 3);
+}
+
+static void TestMath()
+{
+	auto V = ParseFloats("1, 2.5, -3");
+	CHECK(V.size() == 3 && V[0] == 1.0f && V[1] == 2.5f && V[2] == -3.0f);
+	CHECK(ParseFloats("").empty());
+	CHECK(ParseFloats("7").size() == 1 && ParseFloats("7")[0] == 7.0f);
+	auto W = ParseFloats("1,,x");
+	CHECK(W.size() == 3 && W[1] == 0.0f && W[2] == 0.0f);          // Unsinn wird 0
+
+	float R[9];
+	float Zero[3] = {0, 0, 0};
+	FlEulerToRotation(Zero, R);
+	CHECK(R[0] == 1.0f && R[4] == 1.0f && R[8] == 1.0f && R[1] == 0.0f);
+	float Z90[3] = {0, 0, 90};                                     // 90 Grad um Z: x -> y
+	FlEulerToRotation(Z90, R);
+	CHECK(std::fabs(R[3] - 1.0f) < 1e-6f && std::fabs(R[1] + 1.0f) < 1e-6f && std::fabs(R[8] - 1.0f) < 1e-6f);
+	float X90[3] = {90, 0, 0};                                     // 90 Grad um X: y -> z
+	FlEulerToRotation(X90, R);
+	CHECK(std::fabs(R[7] - 1.0f) < 1e-6f && std::fabs(R[5] + 1.0f) < 1e-6f);
+	float XZ[3] = {90, 0, 90};                                     // erst X, dann Z: y -> z, danach x -> y
+	FlEulerToRotation(XZ, R);
+	// R = Rz * Rx: die z-Zeile von Rz bleibt (0,0,1), also ist die z-Zeile von R gleich der von Rx = (0,1,0)
+	CHECK(std::fabs(R[7] - 1.0f) < 1e-5f && std::fabs(R[6]) < 1e-5f && std::fabs(R[8]) < 1e-5f);
+	float Q[4];
+	RotationToQuat(R, Q);
+	CHECK(std::fabs(Q[0] * Q[0] + Q[1] * Q[1] + Q[2] * Q[2] + Q[3] * Q[3] - 1.0f) < 1e-4f);
+}
+
+// Teil, dessen VMeshRef keine Gruppen umfasst (MeshCount 0): darf kein Mesh bekommen (sonst NaN-Grenzen in der Engine)
+static void TestEmptyPartHasNoMesh()
+{
+	auto Root = Dir("/");
+	auto Lib = Dir("VMeshLibrary"); auto Entry = Dir("m.vms");
+	auto Vms = MakeVms();
+	Entry->Children.push_back(Leaf("VMeshData", Vms.data(), Vms.size()));
+	Lib->Children.push_back(std::move(Entry));
+	Root->Children.push_back(std::move(Lib));
+	auto Model = Dir("empty.3db");
+	auto ML = Dir("MultiLevel"); auto L0 = Dir("Level0"); auto VP = Dir("VMeshPart");
+	std::vector<uint8_t> Ref(60, 0);
+	uint32_t Crc = FlModelCrc("m.vms");
+	std::memcpy(Ref.data() + 4, &Crc, 4);              // StartMesh 0, MeshCount 0
+	VP->Children.push_back(Leaf("VMeshRef", Ref.data(), Ref.size()));
+	L0->Children.push_back(std::move(VP)); ML->Children.push_back(std::move(L0)); Model->Children.push_back(std::move(ML));
+	Root->Children.push_back(std::move(Model));
+	auto Cmpnd = Dir("Cmpnd");
+	auto Part = Dir("Root");
+	Part->Children.push_back(Leaf("Object name", "Root\0", 5));
+	Part->Children.push_back(Leaf("File name", "empty.3db\0", 10));
+	Cmpnd->Children.push_back(std::move(Part));
+	Root->Children.push_back(std::move(Cmpnd));
+	FlModel M; std::string Err;
+	CHECK(BuildModel(*Root, M, Err));
+	CHECK(M.Parts.size() == 1 && !M.Parts[0].bHasMesh);
 }
 
 int main()
@@ -518,6 +588,8 @@ int main()
 	TestRecords();
 	TestImage();
 	TestBuildModel();
+	TestMath();
+	TestEmptyPartHasNoMesh();
 	std::printf(Failures ? "%d Fehler\n" : "alle Tests bestanden\n", Failures);
 	return Failures ? 1 : 0;
 }

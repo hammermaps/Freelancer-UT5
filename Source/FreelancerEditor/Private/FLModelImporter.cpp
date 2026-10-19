@@ -211,6 +211,10 @@ UMaterialInterface* FFLModelImporter::FindMaterial(uint32 Crc) const
 
 UStaticMesh* FFLModelImporter::BuildStaticMesh(const FString& Name, const fl::VmsMesh& Mesh)
 {
+	if (Mesh.Positions.empty() || Mesh.Indices.size() < 3)
+	{
+		return nullptr; // nichts zu bauen (leeres LOD wuerde in der Engine abstuerzen)
+	}
 	const FString AssetName = TEXT("SM_") + SanitizeName(Name);
 	bool bExisting = false;
 	UStaticMesh* SM = LoadOrCreate<UStaticMesh>(TEXT("/Game/Imported/Meshes/") + AssetName, AssetName, bExisting);

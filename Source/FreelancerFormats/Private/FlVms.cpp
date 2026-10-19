@@ -217,11 +217,12 @@ VmsMesh ExtractGroups(const VmsMesh& Src, size_t FirstGroup, size_t GroupCount, 
 		const VmsGroup& G = Src.Groups[g];
 		VmsGroup NG = G;
 		NG.IndexStart = (uint32_t)Out.Indices.size();
-		bool bValid = true;
-		for (uint32_t i = 0; i < G.NumRefIndices; ++i)
+		NG.NumRefIndices = (uint16_t)(G.NumRefIndices - G.NumRefIndices % 3); // nur ganze Dreiecke
+		bool bValid = NG.NumRefIndices >= 3;
+		for (uint32_t i = 0; bValid && i < NG.NumRefIndices; ++i)
 			if (G.IndexStart + i >= Src.Indices.size() || (size_t)Src.Indices[G.IndexStart + i] + VertexBase >= Src.Positions.size() / 3) { bValid = false; break; }
-		if (!bValid) continue; // Gruppe verweist ausserhalb des Vertexpuffers: auslassen
-		for (uint32_t i = 0; i < G.NumRefIndices; ++i)
+		if (!bValid) continue; // zu kurz oder verweist ausserhalb des Vertexpuffers: auslassen
+		for (uint32_t i = 0; i < NG.NumRefIndices; ++i)
 		{
 			uint16_t Old = (uint16_t)(Src.Indices[G.IndexStart + i] + VertexBase);
 			auto It = Remap.find(Old);
