@@ -20,11 +20,12 @@ ctest --test-dir ~/UEBuild/fltool --output-on-failure
 | `fltool utf extract <datei> <ordner>` | alle Blattdaten als Dateien schreiben |
 | `fltool ini sections <datei>` | INI-Sektionen mit Eintragsanzahl |
 | `fltool tex extract <datei> <ordner>` | je Textur die größte MIP-Stufe als `.dds`/`.tga` |
+| `fltool tex decode <bild> <out.pam>` | DDS/TGA mit dem eigenen Decoder (`Image`) nach RGBA (PAM) |
 | `fltool model info <datei>` | Materialien (CRC, Typ, Textur) und Hardpoints |
 | `fltool mesh export <datei> <out.glb> [--all-lods] [--mat <datei.mat>]` | VMesh-Bibliothek flach nach glTF (Teile liegen **nicht** an ihrer Position, nur zum Ansehen) |
 | `fltool cmp export <datei.cmp> <out.glb> [--mat <datei.mat>]` | Compound-Modell mit Teilen, Konstrukt-Transformationen (Fix/Rev/Pris im Ruhezustand) und Hardpoints als Knoten `HP_<name>` |
 
-**Quellen:** die Formatbibliothek liegt als UE-Modul in `Source/FreelancerFormats/` (Public/Private) und wird von `Tools/fltool/CMakeLists.txt` mitgebaut; die CLI steht in `Tools/fltool/src/main.cpp`. Module: `Utf` (Container), `Ini` (Textform; BINI wird abgelehnt), `Vms` (VMeshData, Szenen, GLB-Schreiber), `Model` (Material-CRC, Materialien, Hardpoints, Konstrukte, Teile), `ShipData` (shiparch.ini → `FlShipRecord`).
+**Quellen:** die Formatbibliothek liegt als UE-Modul in `Source/FreelancerFormats/` (Public/Private) und wird von `Tools/fltool/CMakeLists.txt` mitgebaut; die CLI steht in `Tools/fltool/src/main.cpp`. Module: `Utf` (Container), `Ini` (Textform; BINI wird abgelehnt), `Vms` (VMeshData, Szenen, GLB-Schreiber), `Model` (Material-CRC, Materialien, Hardpoints, Konstrukte, Teile), `ShipData` (shiparch.ini → `FlShipRecord`), `Records` (allgemeine INI-Datensätze: Ausrüstung, Waren), `Image` (TGA/DDS-Decoder → RGBA8, unterstützt TGA Typ 1/2/3/9/10/11 mit Palette, 8/16/24/32 bpp, DXT1/3/5 und unkomprimiertes DDS 16/24/32 bpp). Der Decoder wurde gegen Pillow an 1122 Original-Texturen verglichen (0 Fehler, mittlere Abweichung ≤ 0,71 von 255).
 **Tests**: `Tools/fltool/tests/test_main.cpp` (nur synthetische Daten).
 **Formatreferenz**: Librelancer (MIT), `Reference/Librelancer/src/LibreLancer/Utf/`. Die CRC-Tabelle in `src/CrcTable.inc` stammt von dort.
 

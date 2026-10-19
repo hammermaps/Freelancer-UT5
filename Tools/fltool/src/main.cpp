@@ -5,7 +5,9 @@
 //   fltool cmp export <datei.cmp> <out.glb> [--mat <datei.mat>]  Teile mit Hierarchie, Hardpoints als Knoten
 //   fltool cmp export <datei.cmp> <out.glb> [--mat <datei.mat>]\n  fltool model info <datei>\n  fltool mesh export <datei> <out.glb> [--all-lods] [--mat <datei.mat>]  VMeshData nach glTF (LOD0, sonst alle)
 //   fltool model info <datei>                Materialien (CRC, Typ, Textur) und Hardpoints
-//   fltool tex extract <datei> <zielordner>  je Textur die groesste MIP-Stufe als .dds/.tga schreiben
+//   fltool tex decode <bild.dds|tga> <out.pam>  Bild decodieren (RGBA, PAM-Format)
+//   fltool tex decode <bild> <out.pam>\n  fltool tex extract <datei> <zielordner>  je Textur die groesste MIP-Stufe als .dds/.tga schreiben
+#include "Image.h"
 #include "Ini.h"
 #include "Model.h"
 #include "Utf.h"
@@ -49,34 +51,19 @@ static void Extract(const UtfNode& N, const fs::path& Dir)
 
 static std::string Lower(std::string S) { std::transform(S.begin(), S.end(), S.begin(), [](unsigned char C) { return std::tolower(C); }); return S; }
 
-// Textur-Bibliothek: "Texture library"/<name>/{MIP0..n | MIPS}. Eintraege sind DDS oder TGA.
+// Textur-Bibliothek: je Textur die groesste MIP-Stufe als .dds/.tga schreiben.
 static int ExtractTextures(const UtfNode& Root, const fs::path& Dir)
 {
-	const UtfNode* Lib = FindChild(Root, "Texture library");
-	if (!Lib) return 0;
+	auto Texs = ReadTextures(Root);
+	if (Texs.empty()) return 0;
 	fs::create_directories(Dir);
-	int Count = 0;
-	for (auto& T : Lib->Children)
+	for (auto& T : Texs)
 	{
-		const UtfNode* Best = nullptr;
-		for (auto& M : T->Children)
-		{
-			std::string N = Lower(M->Name);
-			if (N == "mips" || N == "mip0") { Best = M.get(); break; }
-			if (N.rfind("mip", 0) == 0 && (!Best || M->Data.size() > Best->Data.size())) Best = M.get();
-		}
-		if (!Best || Best->Data.size() < 4) continue;
-		bool bDds = std::memcmp(Best->Data.data(), "DDS ", 4) == 0;
-		std::string Base = T->Name;
-		for (auto& Ch : Base) if (Ch == '/' || Ch == '\\') Ch = '_';
-		std::string Low = Lower(Base);
-		for (const char* E : {".tga", ".dds"})
-			if (Low.size() > 4 && Low.compare(Low.size() - 4, 4, E) == 0) { Base.resize(Base.size() - 4); break; }
-		std::ofstream Out(Dir / (Base + (bDds ? ".dds" : ".tga")), std::ios::binary);
-		Out.write((const char*)Best->Data.data(), Best->Data.size());
-		++Count;
+		bool bDds = T.Data.size() >= 4 && std::memcmp(T.Data.data(), "DDS ", 4) == 0;
+		std::ofstream Out(Dir / (T.Name + (bDds ? ".dds" : ".tga")), std::ios::binary);
+		Out.write((const char*)T.Data.data(), T.Data.size());
 	}
-	return Count;
+	return (int)Texs.size();
 }
 
 // Sammelt VMeshData-Knoten ("VMeshLibrary"/<name>/VMeshData).
@@ -233,6 +220,17 @@ int main(int argc, char** argv)
 			else if (!std::strcmp(argv[i], "--mat") && i + 1 < argc) Mat = argv[++i];
 		}
 		return ExportMeshes(*F.Root, argv[4], bAll, Mat);
+	}
+	if (argc >= 5 && !std::strcmp(argv[1], "tex") && !std::strcmp(argv[2], "decode"))
+	{
+		std::ifstream In(argv[3], std::ios::binary);
+		std::vector<uint8_t> Bytes((std::istreambuf_iterator<char>(In)), std::istreambuf_iterator<char>());
+		FlImage Img; std::string Err;
+		if (!DecodeImage(Bytes, Img, Err)) { std::fprintf(stderr, "Fehler: %s\n", Err.c_str()); return 1; }
+		std::ofstream Out(argv[4], std::ios::binary);
+		Out << "P7\nWIDTH " << Img.Width << "\nHEIGHT " << Img.Height << "\nDEPTH 4\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n";
+		Out.write((const char*)Img.Rgba.data(), Img.Rgba.size());
+		return 0;
 	}
 	if (argc >= 5 && !std::strcmp(argv[1], "tex") && !std::strcmp(argv[2], "extract"))
 	{

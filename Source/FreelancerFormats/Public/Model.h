@@ -65,4 +65,12 @@ FLF_API bool ReadLevel0Ref(const UtfNode& Model, FlMeshRef& Out);
 
 // 3x3 (zeilenweise) -> Quaternion x,y,z,w
 FLF_API void RotationToQuat(const float R[9], float Q[4]);
+
+struct FlTexture
+{
+	std::string Name; // ohne Endung .tga/.dds, '/' und '\\' durch '_' ersetzt
+	std::vector<uint8_t> Data; // groesste MIP-Stufe, DDS oder TGA
+};
+// "Texture library"/<name>/{MIPS | MIP0..n}: je Textur die groesste Stufe.
+FLF_API std::vector<FlTexture> ReadTextures(const UtfNode& Root);
 }

@@ -1,5 +1,6 @@
 // Tests fuer flformats. Nur synthetische Daten, keine Originaldateien.
 #include "Ini.h"
+#include "Image.h"
 #include "Model.h"
 #include "Records.h"
 #include "ShipData.h"
@@ -313,6 +314,89 @@ static void TestRecords()
 	CHECK(ParseRecords(IniFile::Parse(""), {}).empty());
 }
 
+static std::vector<uint8_t> Tga(uint8_t Type, int W, int H, int Bpp, uint8_t Desc, const std::vector<uint8_t>& Pixels)
+{
+	std::vector<uint8_t> B(18, 0);
+	B[2] = Type; B[12] = (uint8_t)W; B[14] = (uint8_t)H; B[16] = (uint8_t)Bpp; B[17] = Desc;
+	B.insert(B.end(), Pixels.begin(), Pixels.end());
+	return B;
+}
+
+static std::vector<uint8_t> Dds(uint32_t FourCC, int W, int H, const std::vector<uint8_t>& Blocks, uint32_t PfFlags = 4, uint32_t Bits = 0, uint32_t Mr = 0, uint32_t Mg = 0, uint32_t Mb = 0, uint32_t Ma = 0)
+{
+	std::vector<uint8_t> B(128, 0);
+	std::memcpy(B.data(), "DDS ", 4);
+	auto S = [&](size_t O, uint32_t V) { std::memcpy(&B[O], &V, 4); };
+	S(4, 124); S(12, (uint32_t)H); S(16, (uint32_t)W); S(76, 32); S(80, PfFlags); S(84, FourCC); S(88, Bits); S(92, Mr); S(96, Mg); S(100, Mb); S(104, Ma);
+	B.insert(B.end(), Blocks.begin(), Blocks.end());
+	return B;
+}
+
+static void TestImage()
+{
+	FlImage I; std::string E;
+	// TGA 24 bpp, unten-links Ursprung, 1x2: Zeile 0 (unten) blau, Zeile 1 (oben) rot (BGR im File)
+	CHECK(DecodeTga(Tga(2, 1, 2, 24, 0, {255, 0, 0, 0, 0, 255}), I, E));
+	CHECK(I.Width == 1 && I.Height == 2);
+	CHECK(I.Rgba[0] == 255 && I.Rgba[1] == 0 && I.Rgba[2] == 0);       // oben rot
+	CHECK(I.Rgba[4] == 0 && I.Rgba[6] == 255);                          // unten blau
+	// Ursprung oben-links (Bit 5): keine Spiegelung
+	CHECK(DecodeTga(Tga(2, 1, 2, 24, 0x20, {255, 0, 0, 0, 0, 255}), I, E) && I.Rgba[2] == 255);
+	// 16 bpp A1R5G5B5: 0x7C00 = rot ohne Alpha-Bits im Deskriptor -> deckend
+	CHECK(DecodeTga(Tga(2, 1, 1, 16, 0, {0x00, 0x7C}), I, E) && I.Rgba[0] == 255 && I.Rgba[1] == 0 && I.Rgba[3] == 255);
+	// 32 bpp mit Alpha (Deskriptor 8)
+	CHECK(DecodeTga(Tga(2, 1, 1, 32, 8, {10, 20, 30, 40}), I, E) && I.Rgba[0] == 30 && I.Rgba[2] == 10 && I.Rgba[3] == 40);
+	// 32 bpp ohne Alpha-Bits im Deskriptor: Alpha-Kanal wird trotzdem gelesen
+	CHECK(DecodeTga(Tga(2, 1, 1, 32, 0, {10, 20, 30, 77}), I, E) && I.Rgba[3] == 77);
+	// Palette (Typ 1): 2 Eintraege 24 bit BGR, Indizes 1 und 0
+	{
+		std::vector<uint8_t> B = Tga(1, 2, 1, 8, 0, {});
+		B[1] = 1; B[5] = 2; B[7] = 24;
+		B.insert(B.end(), {1, 2, 3, 4, 5, 6});     // Farbtabelle
+		B.insert(B.end(), {1, 0});                 // Indizes
+		CHECK(DecodeTga(B, I, E) && I.Rgba[0] == 6 && I.Rgba[2] == 4 && I.Rgba[4] == 3);
+		B.resize(B.size() - 4);                    // Tabelle abgeschnitten
+		CHECK(!DecodeTga(B, I, E));
+	}
+	// Graustufen
+	CHECK(DecodeTga(Tga(3, 2, 1, 8, 0, {7, 9}), I, E) && I.Rgba[0] == 7 && I.Rgba[4] == 9);
+	// RLE: ein Lauf mit 3 Pixeln (Header 0x82), 8 bpp gray
+	CHECK(DecodeTga(Tga(11, 3, 1, 8, 0, {0x82, 5}), I, E) && I.Rgba[8] == 5);
+	// Fehler
+	CHECK(!DecodeTga({}, I, E));
+	CHECK(!DecodeTga(Tga(2, 2, 2, 24, 0, {1, 2, 3}), I, E));            // abgeschnitten
+	CHECK(!DecodeTga(Tga(7, 1, 1, 8, 0, {0}), I, E));                    // Typ
+	CHECK(!DecodeTga(Tga(11, 3, 1, 8, 0, {0x82}), I, E));               // RLE abgeschnitten
+	CHECK(!DecodeTga(Tga(2, 0, 1, 24, 0, {}), I, E));                    // Breite 0
+
+	// DXT1: c0 = rot (0xF800), c1 = 0, alle Indizes 0 -> alle Pixel rot
+	std::vector<uint8_t> Blk = {0x00, 0xF8, 0x00, 0x00, 0, 0, 0, 0};
+	CHECK(DecodeDds(Dds(0x31545844, 4, 4, Blk), I, E) && I.Rgba[0] == 255 && I.Rgba[1] == 0 && I.Rgba[3] == 255);
+	// DXT1 mit c0 <= c1 und Index 3 -> transparent
+	std::vector<uint8_t> Blk2 = {0x00, 0x00, 0x00, 0xF8, 0xFF, 0xFF, 0xFF, 0xFF};
+	CHECK(DecodeDds(Dds(0x31545844, 4, 4, Blk2), I, E) && I.Rgba[3] == 0);
+	// DXT5: Alpha0 = 128, Alpha1 = 0, Indizes 0 -> alpha 128
+	std::vector<uint8_t> Blk5 = {128, 0, 0, 0, 0, 0, 0, 0, 0x00, 0xF8, 0x00, 0x00, 0, 0, 0, 0};
+	CHECK(DecodeDds(Dds(0x35545844, 4, 4, Blk5), I, E) && I.Rgba[3] == 128 && I.Rgba[0] == 255);
+	// DXT3: Alpha-Nibble 0xF -> 255, 0x0 -> 0
+	std::vector<uint8_t> Blk3 = {0x0F, 0, 0, 0, 0, 0, 0, 0, 0x00, 0xF8, 0x00, 0x00, 0, 0, 0, 0};
+	CHECK(DecodeDds(Dds(0x33545844, 4, 4, Blk3), I, E) && I.Rgba[3] == 255 && I.Rgba[7] == 0);
+	// unkomprimiert 32 bpp BGRA
+	CHECK(DecodeDds(Dds(0, 1, 1, {1, 2, 3, 4}, 0x41, 32, 0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000), I, E)
+		&& I.Rgba[0] == 3 && I.Rgba[1] == 2 && I.Rgba[2] == 1 && I.Rgba[3] == 4);
+	// unkomprimiert 16 bpp R5G6B5: 0xF800 = rot
+	CHECK(DecodeDds(Dds(0, 1, 1, {0x00, 0xF8}, 0x40, 16, 0xF800, 0x07E0, 0x001F, 0), I, E) && I.Rgba[0] == 255 && I.Rgba[1] == 0 && I.Rgba[3] == 255);
+	// unkomprimiert 16 bpp A1R5G5B5: 0xFC00 = rot, Alpha an
+	CHECK(DecodeDds(Dds(0, 1, 1, {0x00, 0xFC}, 0x41, 16, 0x7C00, 0x03E0, 0x001F, 0x8000), I, E) && I.Rgba[0] == 255 && I.Rgba[3] == 255);
+	// Fehler
+	CHECK(!DecodeDds({}, I, E));
+	CHECK(!DecodeDds(Dds(0x31545844, 4, 4, {0, 0}), I, E));              // abgeschnitten
+	CHECK(!DecodeDds(Dds(0x12345678, 4, 4, Blk), I, E));                 // unbekanntes FourCC
+	// Auto-Erkennung
+	CHECK(DecodeImage(Dds(0x31545844, 4, 4, Blk), I, E) && I.Width == 4);
+	CHECK(DecodeImage(Tga(3, 1, 1, 8, 0, {9}), I, E) && I.Rgba[0] == 9);
+}
+
 int main()
 {
 	TestUtf();
@@ -322,6 +406,7 @@ int main()
 	TestCmp();
 	TestShips();
 	TestRecords();
+	TestImage();
 	std::printf(Failures ? "%d Fehler\n" : "alle Tests bestanden\n", Failures);
 	return Failures ? 1 : 0;
 }

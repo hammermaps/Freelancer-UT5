@@ -161,4 +161,32 @@ void RotationToQuat(const float R[9], float Q[4])
 	float L = std::sqrt(Q[0] * Q[0] + Q[1] * Q[1] + Q[2] * Q[2] + Q[3] * Q[3]);
 	if (L > 0) for (int i = 0; i < 4; ++i) Q[i] /= L; else { Q[0] = Q[1] = Q[2] = 0; Q[3] = 1; }
 }
+
+std::vector<FlTexture> ReadTextures(const UtfNode& Root)
+{
+	std::vector<FlTexture> R;
+	const UtfNode* Lib = FindChild(Root, "Texture library");
+	if (!Lib) return R;
+	auto Lower = [](std::string S) { std::transform(S.begin(), S.end(), S.begin(), [](unsigned char C) { return (char)std::tolower(C); }); return S; };
+	for (auto& T : Lib->Children)
+	{
+		const UtfNode* Best = nullptr;
+		for (auto& M : T->Children)
+		{
+			std::string N = Lower(M->Name);
+			if (N == "mips" || N == "mip0") { Best = M.get(); break; }
+			if (N.rfind("mip", 0) == 0 && (!Best || M->Data.size() > Best->Data.size())) Best = M.get();
+		}
+		if (!Best || Best->Data.size() < 4) continue;
+		FlTexture Tex;
+		Tex.Name = T->Name;
+		for (auto& Ch : Tex.Name) if (Ch == '/' || Ch == '\\') Ch = '_';
+		std::string Low = Lower(Tex.Name);
+		for (const char* E : {".tga", ".dds"})
+			if (Low.size() > 4 && Low.compare(Low.size() - 4, 4, E) == 0) { Tex.Name.resize(Tex.Name.size() - 4); break; }
+		Tex.Data = Best->Data;
+		R.push_back(std::move(Tex));
+	}
+	return R;
+}
 }
