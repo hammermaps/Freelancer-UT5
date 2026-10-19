@@ -1,6 +1,7 @@
 // Tests fuer flformats. Nur synthetische Daten, keine Originaldateien.
 #include "FlIni.h"
 #include "FlImage.h"
+#include "FlFaction.h"
 #include "FlMarket.h"
 #include "FlMath.h"
 #include "FlModel.h"
@@ -593,6 +594,34 @@ static void TestMarkets()
 	CHECK(ParseMarkets(IniFile::Parse("")).empty());
 }
 
+static void TestFactions()
+{
+	const char* World =
+		"[Group]\nnickname = li_lsf_grp\nids_name = 196847\nids_info = 66202\nids_short_name = 196896\nrep = 0.91, li_n_grp\nrep = -0.5, br_n_grp\nterrain = x\n"
+		"[Group]\nids_name = 5\n[Group]\nnickname = fc_x_grp\n[locked_gates]\nlocked_gate = 1\n";
+	const char* Emp =
+		"[RepChangeEffects]\ngroup = li_lsf_grp\nevent = object_destruction, -0.03\nevent = random_mission_success, 0.0859\nempathy_rate = li_p_grp, 0.35\nempathy_rate = , 1\n"
+		"[RepChangeEffects]\ngroup = unbekannt_grp\nevent = a, 1\n[RepChangeEffects]\nevent = ohne_gruppe, 1\n";
+	const char* FP = "[FactionProps]\naffiliation = LI_LSF_GRP\nlegality = lawful\nnpc_ship = a\nnpc_ship = b\n[FactionProps]\nlegality = ohne_affiliation\n";
+	auto F = ParseFactions(IniFile::Parse(World), IniFile::Parse(Emp), IniFile::Parse(FP));
+	CHECK(F.size() == 2);                                         // Gruppe ohne nickname faellt weg
+	CHECK(F[0].Nickname == "li_lsf_grp" && F[0].IdsName == 196847 && F[0].IdsInfo == 66202 && F[0].IdsShortName == 196896);
+	CHECK(F[0].Relations.size() == 2 && F[0].Relations[0].first == "li_n_grp" && F[0].Relations[0].second == 0.91f && F[0].Relations[1].second == -0.5f);
+	CHECK(F[0].RepEvents.size() == 2 && F[0].RepEvents[0].first == "object_destruction" && F[0].RepEvents[0].second == -0.03f);
+	CHECK(F[0].Empathy.size() == 1 && F[0].Empathy[0].first == "li_p_grp");   // leerer Name wird uebersprungen
+	bool bTerrain = false, bLegality = false; int NpcShips = 0;
+	for (auto& P : F[0].Props)
+	{
+		if (P.first == "terrain" && P.second == "x") bTerrain = true;
+		if (P.first == "fp_legality" && P.second == "lawful") bLegality = true;
+		if (P.first == "fp_npc_ship") ++NpcShips;
+		CHECK(P.first != "fp_affiliation" && P.first != "nickname");
+	}
+	CHECK(bTerrain && bLegality && NpcShips == 2);                // Gruppen- und Fraktionseigenschaften, Wiederholungen bleiben
+	CHECK(F[1].Nickname == "fc_x_grp" && F[1].Relations.empty() && F[1].Props.empty());
+	CHECK(ParseFactions(IniFile::Parse(""), IniFile::Parse(""), IniFile::Parse("")).empty());
+}
+
 int main()
 {
 	TestUtf();
@@ -607,6 +636,7 @@ int main()
 	TestBuildModel();
 	TestMath();
 	TestMarkets();
+	TestFactions();
 	TestEmptyPartHasNoMesh();
 	std::printf(Failures ? "%d Fehler\n" : "alle Tests bestanden\n", Failures);
 	return Failures ? 1 : 0;

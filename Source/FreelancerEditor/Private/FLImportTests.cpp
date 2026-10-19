@@ -250,3 +250,33 @@ bool FFLSolarImportTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Asset-Name bereinigt"), FFLModelImporter::SanitizeName(TEXT("a-b c.d")), FString(TEXT("a_b_c_d")));
 	return true;
 }
+
+#include "Data/FLFactionData.h"
+#include "FlFaction.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLFactionImportTest, "Freelancer.Import.Faction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLFactionImportTest::RunTest(const FString& Parameters)
+{
+	const auto F = fl::ParseFactions(
+		fl::IniFile::Parse("[Group]\nnickname = li_lsf_grp\nids_name = 7\nrep = 0.91, li_n_grp\nrep = -0.5, br_n_grp\nterrain = a\nterrain = b\n"),
+		fl::IniFile::Parse("[RepChangeEffects]\ngroup = li_lsf_grp\nevent = object_destruction, -0.03\nempathy_rate = li_p_grp, 0.35\n"),
+		fl::IniFile::Parse("[FactionProps]\naffiliation = li_lsf_grp\nlegality = lawful\n"));
+	if (F.size() != 1)
+	{
+		AddError(TEXT("Parser lieferte unerwartete Anzahl"));
+		return false;
+	}
+	UFLFactionData* D = NewObject<UFLFactionData>(GetTransientPackage());
+	UFLImportCommandlet::FillFactionData(D, F[0]);
+	TestEqual(TEXT("Nickname"), D->Nickname, FName("li_lsf_grp"));
+	TestEqual(TEXT("Beziehung freundlich"), D->GetRelation("li_n_grp"), 0.91f);
+	TestEqual(TEXT("Beziehung feindlich"), D->GetRelation("br_n_grp"), -0.5f);
+	TestEqual(TEXT("unbekannt -> Default"), D->GetRelation("zz", 0.25f), 0.25f);
+	TestEqual(TEXT("Ruf-Ereignis"), D->RepEvents.FindRef(FName("object_destruction")), -0.03f);
+	TestEqual(TEXT("Empathie"), D->Empathy.FindRef(FName("li_p_grp")), 0.35f);
+	TestEqual(TEXT("Wiederholter Schluessel"), D->Properties.FindRef(FName("terrain#2")), FString(TEXT("b")));
+	TestEqual(TEXT("Faction-Property mit Praefix"), D->Properties.FindRef(FName("fp_legality")), FString(TEXT("lawful")));
+	return true;
+}

@@ -5,11 +5,13 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Data/FLEquipmentData.h"
 #include "Data/FLGoodData.h"
+#include "Data/FLFactionData.h"
 #include "Data/FLMarketData.h"
 #include "Data/FLModelData.h"
 #include "Data/FLShipData.h"
 #include "Data/FLSolarData.h"
 #include "Data/FLSystemData.h"
+#include "FlFaction.h"
 #include "FlMarket.h"
 #include "FlMath.h"
 #include "FlModel.h"
@@ -535,6 +537,57 @@ int32 UFLImportCommandlet::ImportSolars(const FString& DataDir, bool bWithModels
 	return Count;
 }
 
+void UFLImportCommandlet::FillFactionData(UFLFactionData* Data, const fl::FlFaction& F)
+{
+	Data->Nickname = FName(UTF8_TO_TCHAR(F.Nickname.c_str()));
+	Data->IdsName = F.IdsName;
+	Data->IdsInfo = F.IdsInfo;
+	Data->IdsShortName = F.IdsShortName;
+	Data->Relations.Reset();
+	Data->RepEvents.Reset();
+	Data->Empathy.Reset();
+	Data->Properties.Reset();
+	for (const auto& P : F.Relations) { Data->Relations.Add(FName(UTF8_TO_TCHAR(P.first.c_str())), P.second); }
+	for (const auto& P : F.RepEvents) { Data->RepEvents.Add(FName(UTF8_TO_TCHAR(P.first.c_str())), P.second); }
+	for (const auto& P : F.Empathy) { Data->Empathy.Add(FName(UTF8_TO_TCHAR(P.first.c_str())), P.second); }
+	TMap<FName, int32> Seen;
+	for (const auto& P : F.Props)
+	{
+		const FName Base(UTF8_TO_TCHAR(P.first.c_str()));
+		int32& N = Seen.FindOrAdd(Base);
+		++N;
+		Data->Properties.Add(N == 1 ? Base : FName(*FString::Printf(TEXT("%s#%d"), *Base.ToString(), N)), UTF8_TO_TCHAR(P.second.c_str()));
+	}
+}
+
+int32 UFLImportCommandlet::ImportFactions(const FString& DataDir)
+{
+	FFLModelImporter Paths(DataDir);
+	auto Load = [&](const TCHAR* Rel) { return LoadIni(Paths.ResolvePath(Rel)); };
+	fl::IniFile World = Load(TEXT("initialworld.ini"));
+	fl::IniFile Empathy = Load(TEXT("MISSIONS/empathy.ini"));
+	fl::IniFile Props = Load(TEXT("MISSIONS/faction_prop.ini"));
+	if (!World.bOk)
+	{
+		UE_LOG(LogFLImport, Error, TEXT("initialworld.ini: %s"), UTF8_TO_TCHAR(World.Error.c_str()));
+		return -1;
+	}
+	if (!Empathy.bOk) { UE_LOG(LogFLImport, Warning, TEXT("empathy.ini: %s"), UTF8_TO_TCHAR(Empathy.Error.c_str())); }
+	if (!Props.bOk) { UE_LOG(LogFLImport, Warning, TEXT("faction_prop.ini: %s"), UTF8_TO_TCHAR(Props.Error.c_str())); }
+	int32 Count = 0;
+	for (const fl::FlFaction& F : fl::ParseFactions(World, Empathy, Props))
+	{
+		const FString Name = TEXT("DA_Faction_") + FFLModelImporter::SanitizeName(UTF8_TO_TCHAR(F.Nickname.c_str()));
+		if (!CreateAndSave<UFLFactionData>(TEXT("/Game/Imported/Factions/") + Name, Name, [&F](UFLFactionData* D) { FillFactionData(D, F); }))
+		{
+			return -1;
+		}
+		++Count;
+	}
+	UE_LOG(LogFLImport, Display, TEXT("%d Fraktionen importiert"), Count);
+	return Count;
+}
+
 int32 UFLImportCommandlet::Main(const FString& Params)
 {
 	FString DataDir;
@@ -547,7 +600,7 @@ int32 UFLImportCommandlet::Main(const FString& Params)
 	FParse::Value(*Params, TEXT("-models="), ModelFilter); // "all" oder Schiff-Nickname
 	const bool bAllModels = ModelFilter == TEXT("all");
 	FFLModelImporter Models(DataDir); // gemeinsamer Importer: Texturen, Materialien und Modelle werden zwischengespeichert
-	if (ImportShips(DataDir, ModelFilter, Models) < 0 || ImportUniverse(DataDir) < 0 || ImportMarkets(DataDir) < 0
+	if (ImportShips(DataDir, ModelFilter, Models) < 0 || ImportUniverse(DataDir) < 0 || ImportMarkets(DataDir) < 0 || ImportFactions(DataDir) < 0
 		|| ImportSolars(DataDir, bAllModels, Models) < 0 || ImportEquipment(DataDir, bAllModels, Models) < 0 || ImportGoods(DataDir) < 0)
 	{
 		return 2;

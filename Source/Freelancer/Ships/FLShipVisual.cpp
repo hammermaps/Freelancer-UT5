@@ -6,6 +6,8 @@
 #include "Data/FLModelData.h"
 #include "Engine/StaticMesh.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogFLShipVisual, Log, All);
+
 AFLShipVisual::AFLShipVisual()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -49,6 +51,16 @@ void AFLShipVisual::RebuildFromModel()
 		AddInstanceComponent(Comp);
 		PartComponents[I] = Comp;
 	}
+
+	int32 Meshes = 0, Hardpoints = 0;
+	for (const FFLModelPart& P : Data->Parts)
+	{
+		Meshes += P.Mesh.IsNull() ? 0 : 1;
+		Hardpoints += P.Hardpoints.Num();
+	}
+	// Stabile Zeile fuer die Abnahme: Server und Client muessen dieselben Zahlen melden
+	UE_LOG(LogFLShipVisual, Display, TEXT("FLShipVisual %s: Modell %s, %d Teile, %d Meshes, %d Hardpoints"),
+		*GetName(), *Data->GetName(), Data->Parts.Num(), Meshes, Hardpoints);
 }
 
 UStaticMeshComponent* AFLShipVisual::FindPart(FName PartName) const

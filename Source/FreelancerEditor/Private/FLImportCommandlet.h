@@ -13,6 +13,8 @@ class UFLGoodData;
 class UFLSystemData;
 class UFLMarketData;
 class UFLSolarData;
+class UFLFactionData;
+namespace fl { struct FlFaction; }
 class FFLModelImporter;
 namespace fl { struct FlBaseMarket; }
 namespace fl { struct FlShipRecord; struct FlRecord; }
@@ -37,6 +39,8 @@ public:
 	/** Fuellt ein Solar-Archetyp-Asset aus einem [Solar]-Eintrag der solararch.ini. */
 	static void FillSolarData(UFLSolarData* Data, const fl::FlRecord& Record);
 
+	static void FillFactionData(UFLFactionData* Data, const fl::FlFaction& Faction);
+
 	static void FillGoodData(UFLGoodData* Data, const fl::FlRecord& Record);
 
 	/** Fuellt ein System aus dem [system]-Eintrag der universe.ini und den Records der System-INI (Objekte, Zonen, Info). */
@@ -56,4 +60,5 @@ private:
 	int32 ImportGoods(const FString& DataDir);
 	int32 ImportUniverse(const FString& DataDir);
 	int32 ImportMarkets(const FString& DataDir);
+	int32 ImportFactions(const FString& DataDir);
 };
