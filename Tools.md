@@ -60,6 +60,12 @@ python3 -I Tools/render_glb.py <datei.glb> <out.png>
 ```
 Software-Darstellung einer `.glb` (z. B. von `fltool cmp export`) in drei Ansichten (Seite, Draufsicht, Vorn), schattiert nach Normalen mit Teile-Hierarchie. Dient der schnellen Prüfung von Form und Ausrichtung ohne Blender/Engine; hat den Index-Fehler beim VMesh-Import sichtbar gemacht. Test: `~/UEBuild/pyenv/bin/python -I Tools/tests/test_render_glb.py` (matplotlib in der venv installiert).
 
+## Schiff im Level ansehen (Screenshot) – `Tools/create_ship_view_level.py`
+
+1. Level erzeugen (alte Datei vorher verschieben, nicht löschen): `UnrealEditor-Cmd Freelancer.uproject -ExecutePythonScript=Tools/create_ship_view_level.py -unattended -nullrhi`. Es legt `L_ShipView` mit `AFLShipVisual` (Modell `DA_Model_li_fighter`), beweglichen Lichtern und einem `PlayerStart` mit Blick aufs Schiff an.
+2. Screenshot aus dem Spiel mit Verzögerung: `DISPLAY=:0 UnrealEditor Freelancer.uproject /Game/Freelancer/Maps/L_ShipView -game -windowed -ResX=1280 -ResY=720 -nosound -log -ExecCmds="r.HighResScreenshotDelay 600,HighResShot 1280x720"`. Das Bild landet in `~/UEBuild/Freelancer/Saved/Screenshots/LinuxEditor/`; der Prozess endet nicht von selbst (danach `pkill -x UnrealEditor`). Screenshots aus Originaldaten **nicht ins Repo** legen.
+3. Fallstricke, die zu schwarzen Bildern führten: (a) `EditorLevelLibrary.new_level` wechselte das Level nicht, die Actors landeten im Startlevel – `LevelEditorSubsystem.new_level` verwenden und das aktive Level prüfen; (b) Modell-Eigenschaft per Python mit dem geladenen Asset setzen, nicht mit `SoftObjectPath`; (c) statische Lichter sind ohne Lighting-Build schwarz – Mobilität `MOVABLE`; (d) Python-`Rotator` ist `(roll, pitch, yaw)`; (e) ohne `r.HighResScreenshotDelay` entsteht das Bild vor dem Shader-Kompilieren; (f) ältere Spielprozesse beenden, sie belegen die CPU.
+
 ## Typischer Ablauf: Schiff nach Blender
 
 ```
@@ -77,6 +83,5 @@ Zum Analysieren der Original-EXE/-DLLs; Einrichtung, Werkzeuge und Regeln in `CL
 
 ## Geplant
 
-- Screenshot aus dem Spiel/Editor (Vulkan liefert in `-game`/Editor-Skript derzeit schwarze Bilder bzw. beendet den Editor nach wenigen Frames; ungelöst, `create_ship_view_level.py` erzeugt `L_ShipView` für spätere Versuche).
 - Emissive-Ableitung; Qualitätsvergleich der Modelle (Real-ESRGAN, PBRify, GTAV) an einer größeren Stichprobe; Stapel-Lauf über alle importierten Texturen.
 - Manifest-Werkzeug (alle Schiffe/Stationen mit ihren Dateien), Loose-/Sphere-Konstrukte, animierte Rev/Pris-Posen, Wireframes (VMeshWire).
