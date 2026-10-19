@@ -170,3 +170,81 @@ bool FFLFlightParamsTest::RunTest(const FString& Parameters)
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS
+
+#if WITH_DEV_AUTOMATION_TESTS
+#include "Flight/FLPrediction.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLPredictionTest, "Freelancer.Flight.Prediction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLPredictionTest::RunTest(const FString& Parameters)
+{
+	const FFLFlightParams P = FighterParams();
+	const double Dt = 1.0 / 60.0;
+	FFLFlightInput In;
+	In.Throttle = 1.f; In.Yaw = 0.3f;
+
+	// Client sagt voraus und merkt sich die Bewegungen; der Server rechnet dasselbe, aber mit Verzoegerung
+	FFLMoveHistory History;
+	FFLFlightState Client, Server;
+	TArray<FFLFlightState> ServerAfter; // Serverzustand nach Bewegung i
+	for (uint32 Seq = 1; Seq <= 30; ++Seq)
+	{
+		FFLMove M; M.Sequence = Seq; M.Input = In; M.Dt = (float)Dt;
+		TestTrue(TEXT("Sequenz aufsteigend"), History.Add(M));
+		Client = FLFlight::Step(Client, M.Input, P, M.Dt);
+		Server = FLFlight::Step(Server, M.Input, P, M.Dt);
+		ServerAfter.Add(Server);
+	}
+	TestFalse(TEXT("alte Sequenz wird abgelehnt"), History.Add(FFLMove{20, In, 0.016f}));
+	TestEqual(TEXT("30 offene Bewegungen"), History.Num(), 30);
+
+	// Server bestaetigt Bewegung 20 (Zustand nach 20): Wiederholung der Bewegungen 21..30 ergibt den Client-Zustand
+	History.Acknowledge(20);
+	TestEqual(TEXT("10 Bewegungen bleiben offen"), History.Num(), 10);
+	const FFLFlightState Replayed = History.Replay(ServerAfter[19], P);
+	TestTrue(TEXT("Reconciliation ohne Abweichung reproduziert den Client-Zustand bitgleich"),
+		Replayed.Position == Client.Position && Replayed.Rotation == Client.Rotation && Replayed.Velocity == Client.Velocity);
+	TestFalse(TEXT("kein Korrekturbedarf"), FLPrediction::NeedsCorrection(Replayed, Client));
+
+	// Der Server hat eine Bewegung anders berechnet (z. B. Kollision/Treffer): der Client wird korrigiert
+	FFLFlightState Hit = ServerAfter[19];
+	Hit.Position += FVector(0, 500.0, 0);
+	const FFLFlightState Corrected = History.Replay(Hit, P);
+	TestTrue(TEXT("Abweichung wird erkannt"), FLPrediction::NeedsCorrection(Client, Corrected));
+	TestTrue(TEXT("Abweichung nach Wiederholung ~500 cm"), FMath::IsNearlyEqual(FLPrediction::PositionError(Client, Corrected), 500.0, 15.0));
+
+	// Glaetten: sanft bei kleinem Fehler, Sprung bei grossem
+	FFLFlightState Near = Client; Near.Position += FVector(0, 50, 0);
+	const FFLFlightState Half = FLPrediction::Smooth(Client, Near, 0.5);
+	TestTrue(TEXT("Glaetten halbiert den Fehler"), FMath::IsNearlyEqual(FLPrediction::PositionError(Half, Near), 25.0, 0.5));
+	FFLFlightState Far = Client; Far.Position += FVector(0, 5000, 0);
+	TestTrue(TEXT("grosser Fehler: sofort uebernehmen"), FLPrediction::Smooth(Client, Far, 0.1).Position == Far.Position);
+
+	// Verlauf ist begrenzt
+	FFLMoveHistory Long;
+	for (uint32 Seq = 1; Seq <= 1000; ++Seq)
+	{
+		Long.Add(FFLMove{Seq, In, 0.016f});
+	}
+	TestEqual(TEXT("Verlauf auf MaxMoves begrenzt"), Long.Num(), FFLMoveHistory::MaxMoves);
+	TestEqual(TEXT("neueste Sequenz bleibt"), (int32)Long.LastSequence(), 1000);
+	Long.Acknowledge(5000);
+	TestEqual(TEXT("alles bestaetigt"), Long.Num(), 0);
+
+	// Zeitbudget: ein Client darf nicht mehr Bewegungszeit schicken, als auf dem Server vergangen ist
+	FFLMoveBudget Budget(0.25);
+	TestTrue(TEXT("anfangs voller Puffer"), FMath::IsNearlyEqual(Budget.Remaining(), 0.25));
+	TestTrue(TEXT("einzelne Bewegung auf MaxStep gekuerzt"), FMath::IsNearlyEqual(Budget.Consume(5.0), FFLMoveBudget::MaxStep));
+	Budget.Consume(0.1);
+	const double Left = Budget.Consume(0.1);
+	TestTrue(TEXT("Budget ist erschoepft (0.25 - 0.1 - 0.1 = 0.05)"), FMath::IsNearlyEqual(Left, 0.05, 1e-9));
+	TestEqual(TEXT("danach nichts mehr erlaubt"), Budget.Consume(0.1), 0.0);
+	Budget.Accrue(0.016);
+	TestTrue(TEXT("Echtzeit fuellt das Budget auf"), FMath::IsNearlyEqual(Budget.Consume(0.1), 0.016, 1e-9));
+	Budget.Accrue(100.0);
+	TestTrue(TEXT("Puffer ist nach oben begrenzt"), FMath::IsNearlyEqual(Budget.Remaining(), 0.25));
+	TestEqual(TEXT("negative Anfrage verbraucht nichts"), Budget.Consume(-1.0), 0.0);
+	return true;
+}
+#endif
