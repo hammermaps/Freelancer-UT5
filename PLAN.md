@@ -128,18 +128,18 @@ Jeder Meilenstein endet **mit mehreren verbundenen Clients**, nicht mit einem lo
 - Standardkarte auf eigene leere Weltraumkarte `L_Test_Space` umstellen.
 - **Fertig, wenn:** Dedicated Server startet, zwei Editor-/Client-Instanzen verbinden sich mit dem Testlevel.
 
-**Status M0 (18.10.2026):**
+**Status M0 (19.10.2026) – abgeschlossen:**
 - [x] Git-Repo (`main`) mit `.gitignore` (ohne `Reference/`, `Content/Imported/`, generierte Ordner) und `.gitattributes` (LFS-Regeln); noch kein Commit.
 - [x] `FreelancerEditor` baut unter Linux (`Build.sh FreelancerEditor Linux Development`, Ergebnis Succeeded).
 - [x] Targets `FreelancerServer` und `FreelancerClient` angelegt (`Source/*.Target.cs`).
-- [ ] **Blocker:** Die installierte Engine `~/Linux_Unreal_Engine_5.8.3` ist ein Installed Build und meldet beim Server-Build
+- [x] ~~Blocker~~ gelöst (Source-Engine 5.8.3 gebaut, Server/Client-Targets bauen): Die installierte Engine `~/Linux_Unreal_Engine_5.8.3` ist ein Installed Build und meldet beim Server-Build
       „Server targets are not currently supported from this engine distribution". Server-/Client-Targets und die headless
       Dienst-Programme (Gateway, Coordinator, Agent …) brauchen eine **aus dem Quellcode gebaute UE 5.8** (Epic-GitHub, Konto verknüpfen).
 - [x] Übergangslösung: Spiel-Instanz mit dem Editor-Binary als Server getestet (`UnrealEditor Freelancer.uproject /Game/Freelancer/Maps/L_Test_Space -server -game -log -nullrhi`): startet, lauscht auf UDP 7777, lädt das Level.
-- [ ] `git-lfs` installieren (`sudo apt install git-lfs`, danach `git lfs install`), ersten Commit anlegen.
+- [x] `git-lfs` installiert, Commits auf GitHub (`hammermaps/Freelancer-UT5`).
 - [x] Leeres Level `/Game/Freelancer/Maps/L_Test_Space` angelegt (`Tools/create_test_level.py`) und als Standard-, Editor- und Servermap gesetzt.
-- [ ] Zwei Clients verbinden sich mit dem Server (noch nicht getestet).
-- [x] Hinweis: `/media/Games` ist `noexec` gemountet, `.so`-Dateien lassen sich von dort nicht laden. `Binaries/`, `Intermediate/`, `DerivedDataCache/` und `Saved/` liegen deshalb lokal in `~/UEBuild/Freelancer/` (Symlinks im Projekt). Mit `exec` im fstab wäre das nicht mehr nötig.
+- [x] Zwei Clients verbinden sich mit dem gekochten `FreelancerServer` (19.10.2026: `Join succeeded` ×2, `Welcomed by server` auf beiden Clients; Ablauf in `CLAUDE.md`).
+- [x] Hinweis (inzwischen behoben, Mount ohne `noexec`): `/media/Games` war `noexec` gemountet, `.so`-Dateien lassen sich von dort nicht laden. `Binaries/`, `Intermediate/`, `DerivedDataCache/` und `Saved/` liegen deshalb lokal in `~/UEBuild/Freelancer/` (Symlinks im Projekt). Mit `exec` im fstab wäre das nicht mehr nötig.
 
 ### M1 – Datenimport-Pipeline (Wochen 2–4)
 - INI-Parser (Sektionen mit wiederholten Keys, `;`-Kommentare, CRLF, `\`-Pfade). Referenz: `LibreLancer.Data`.

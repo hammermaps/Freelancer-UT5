@@ -116,6 +116,13 @@ Hilfswerkzeuge (`fltool`, `tex_to_png.py`, Testlevel-Skript) sind in **[Tools.md
 - Stand 19.10.2026: **Source-Engine 5.8.3 gebaut** (`Engine/UnrealEngine`, Skript `Engine/build_engine.sh`, Log `Engine/build.log`, mit `-NoUBA`, weil UBA mit dem ausgelagerten `Intermediate`-Symlink scheitert). `FreelancerEditor`, `FreelancerServer` und `FreelancerClient` bauen mit dieser Engine (Linux, Development). Binärdateien liegen lokal in `~/UEBuild/Freelancer/Binaries/Linux/`. Bauen: `Engine/UnrealEngine/Engine/Build/BatchFiles/Linux/Build.sh FreelancerServer Linux Development -Project=<Pfad>/Freelancer.uproject -WaitMutex -NoUBA`. Server/Client laufen erst mit gekochtem Content (Cook noch nicht eingerichtet).
 - Git: Repo `main`, `git-lfs` installiert, Remote GitHub (Zugangsdaten nur lokal in `~/.git-credentials-freelancer`).
 
+**Cook, Server und Clients starten** (Stand 19.10.2026, getestet):
+- Einmalig `UnrealPak` bauen: `Build.sh UnrealPak Linux Development -WaitMutex -NoUBA`.
+- Kochen/Paketieren: `Engine/cook_freelancer.sh` (BuildCookRun für `LinuxServer` + `LinuxClient`, Ausgabe `~/UEBuild/Archive`). Nur neu paketieren: `Engine/cook_freelancer.sh -skipcook`. Der Cook braucht viel RAM: `NumUnusedShaderCompilingThreads=12` in `Config/DefaultEngine.ini` begrenzt die Shader-Worker (ohne Limit OOM bei 31 GB).
+- Server: `~/UEBuild/Archive/LinuxServer/FreelancerServer.sh -log -port=7777` (Map `L_Test_Space`, UDP 7777).
+- Client: `~/UEBuild/Archive/LinuxClient/FreelancerClient.sh 127.0.0.1:7777` (headless-Test mit `-nullrhi -nosound`).
+- Verbindungstest: Server + 2 Clients, im Server-Log `Join succeeded` ×2, in den Client-Logs `Welcomed by server`. Die Konsolenausgabe ist gepuffert; die Logs stehen unter `<Archive>/Linux*/Freelancer/Saved/Logs/`.
+
 ## Konventionen
 
 - C++-Klassen mit Präfix **`FL`** (z. B. `AFLShip`, `UFLShipData`); Ordner nach Thema: `Flight/`, `Combat/`, `World/`, `Economy/`, `Missions/`, `UI/`, `Data/`.
