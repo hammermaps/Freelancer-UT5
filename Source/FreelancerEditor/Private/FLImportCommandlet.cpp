@@ -5,12 +5,14 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Data/FLEquipmentData.h"
 #include "Data/FLGoodData.h"
+#include "Data/FLAsteroidFieldData.h"
 #include "Data/FLFactionData.h"
 #include "Data/FLMarketData.h"
 #include "Data/FLModelData.h"
 #include "Data/FLShipData.h"
 #include "Data/FLSolarData.h"
 #include "Data/FLSystemData.h"
+#include "FlAsteroidField.h"
 #include "FlFaction.h"
 #include "FlMarket.h"
 #include "FlMath.h"
@@ -484,7 +486,7 @@ void UFLImportCommandlet::FillSolarData(UFLSolarData* Data, const fl::FlRecord& 
 	auto Num = [&R](const char* Key) { const std::string* V = R.Find(Key); return V ? FCString::Atof(UTF8_TO_TCHAR(V->c_str())) : 0.f; };
 	Data->Nickname = FName(UTF8_TO_TCHAR(R.Nickname.c_str()));
 	const std::string* Type = R.Find("type");
-	Data->SolarType = FName(Type ? UTF8_TO_TCHAR(Type->c_str()) : TEXT(""));
+	Data->SolarType = FName(Type ? UTF8_TO_TCHAR(Type->c_str()) : UTF8_TO_TCHAR(R.Section.c_str())); // Asteroiden haben kein type: Sektionsname (Asteroid, DynamicAsteroid, AsteroidMine)
 	Data->IdsName = (int32)Num("ids_name");
 	Data->IdsInfo = (int32)Num("ids_info");
 	Data->Mass = Num("mass");
@@ -502,36 +504,42 @@ void UFLImportCommandlet::FillSolarData(UFLSolarData* Data, const fl::FlRecord& 
 
 int32 UFLImportCommandlet::ImportSolars(const FString& DataDir, bool bWithModels, FFLModelImporter& Models)
 {
-	const FString Path = Models.ResolvePath(TEXT("SOLAR/solararch.ini"));
-	fl::IniFile Ini = LoadIni(Path);
-	if (!Ini.bOk)
-	{
-		UE_LOG(LogFLImport, Error, TEXT("solararch.ini: %s"), UTF8_TO_TCHAR(Ini.Error.c_str()));
-		return -1;
-	}
 	int32 Count = 0;
 	TSet<FString> Names;
-	for (const fl::FlRecord& R : fl::ParseRecordsOfType(Ini, "Solar"))
+	// solararch.ini ([Solar]) und asteroidarch.ini (Asteroid/DynamicAsteroid/AsteroidMine) teilen sich UFLSolarData
+	struct FSource { const TCHAR* File; bool bSolarOnly; };
+	for (const FSource& Src : {FSource{TEXT("SOLAR/solararch.ini"), true}, FSource{TEXT("SOLAR/asteroidarch.ini"), false}})
 	{
-		const FString Name = TEXT("DA_Solar_") + FFLModelImporter::SanitizeName(UTF8_TO_TCHAR(R.Nickname.c_str()));
-		if (Names.Contains(Name.ToLower()))
+		const FString Path = Models.ResolvePath(Src.File);
+		fl::IniFile Ini = LoadIni(Path);
+		if (!Ini.bOk)
 		{
-			continue;
-		}
-		Names.Add(Name.ToLower());
-		if (!CreateAndSave<UFLSolarData>(TEXT("/Game/Imported/Solars/") + Name, Name, [&R, &Models, bWithModels](UFLSolarData* D)
-			{
-				FillSolarData(D, R);
-				if (bWithModels && FFLModelImporter::IsImportableModelPath(D->SourceArchetype))
-				{
-					const FString Stem = FPaths::GetBaseFilename(D->SourceArchetype);
-					if (UFLModelData* M = Models.ImportModel(TEXT("solar_") + Stem, D->SourceArchetype, D->SourceMaterialLibraries)) { D->Model = M; }
-				}
-			}))
-		{
+			UE_LOG(LogFLImport, Error, TEXT("%s: %s"), Src.File, UTF8_TO_TCHAR(Ini.Error.c_str()));
 			return -1;
 		}
-		++Count;
+		const std::vector<fl::FlRecord> Records = Src.bSolarOnly ? fl::ParseRecordsOfType(Ini, "Solar") : fl::ParseRecords(Ini, {"collisiongroup", "lod"});
+		for (const fl::FlRecord& R : Records)
+		{
+			const FString Name = TEXT("DA_Solar_") + FFLModelImporter::SanitizeName(UTF8_TO_TCHAR(R.Nickname.c_str()));
+			if (Names.Contains(Name.ToLower()))
+			{
+				continue;
+			}
+			Names.Add(Name.ToLower());
+			if (!CreateAndSave<UFLSolarData>(TEXT("/Game/Imported/Solars/") + Name, Name, [&R, &Models, bWithModels](UFLSolarData* D)
+				{
+					FillSolarData(D, R);
+					if (bWithModels && FFLModelImporter::IsImportableModelPath(D->SourceArchetype))
+					{
+						const FString Stem = FPaths::GetBaseFilename(D->SourceArchetype);
+						if (UFLModelData* M = Models.ImportModel(TEXT("solar_") + Stem, D->SourceArchetype, D->SourceMaterialLibraries)) { D->Model = M; }
+					}
+				}))
+			{
+				return -1;
+			}
+			++Count;
+		}
 	}
 	UE_LOG(LogFLImport, Display, TEXT("%d Solar-Archetypen importiert"), Count);
 	return Count;
@@ -588,6 +596,78 @@ int32 UFLImportCommandlet::ImportFactions(const FString& DataDir)
 	return Count;
 }
 
+void UFLImportCommandlet::FillAsteroidFieldData(UFLAsteroidFieldData* Data, const FString& FieldName, const fl::FlAsteroidField& F)
+{
+	Data->FieldName = FName(*FieldName);
+	Data->Cubes.Reset();
+	Data->Sections.Reset();
+	Data->Exclusions.Reset();
+	for (const fl::FlFieldCube& C : F.Cubes)
+	{
+		FFLFieldCube Out;
+		Out.Asteroid = FName(UTF8_TO_TCHAR(C.Asteroid.c_str()));
+		float Dir[3];
+		fl::FlToUeDirection(C.Offset, Dir);
+		Out.Offset = FVector(Dir[0], Dir[1], Dir[2]);
+		Out.Rotation = ToUeRotation(std::vector<float>(C.RotationDeg, C.RotationDeg + 3));
+		Data->Cubes.Add(Out);
+	}
+	for (const fl::FlFieldSection& S : F.Sections)
+	{
+		FFLFieldSection Out;
+		Out.Name = FName(UTF8_TO_TCHAR(S.Name.c_str()));
+		TMap<FName, int32> Seen;
+		for (const auto& P : S.Props)
+		{
+			const FName Base(UTF8_TO_TCHAR(P.first.c_str()));
+			int32& N = Seen.FindOrAdd(Base);
+			++N;
+			Out.Properties.Add(N == 1 ? Base : FName(*FString::Printf(TEXT("%s#%d"), *Base.ToString(), N)), UTF8_TO_TCHAR(P.second.c_str()));
+			if (S.Name == "Field" && P.first == "cube_size")
+			{
+				Data->CubeSize = FCString::Atof(UTF8_TO_TCHAR(P.second.c_str())) * 100.f; // Meter -> cm
+			}
+		}
+		Data->Sections.Add(MoveTemp(Out));
+	}
+	for (const std::string& E : F.Exclusions) { Data->Exclusions.Add(FName(UTF8_TO_TCHAR(E.c_str()))); }
+}
+
+int32 UFLImportCommandlet::ImportAsteroidFields(const FString& DataDir)
+{
+	FFLModelImporter Paths(DataDir);
+	const FString Dir = Paths.ResolvePath(TEXT("SOLAR/ASTEROIDS"));
+	if (Dir.IsEmpty())
+	{
+		UE_LOG(LogFLImport, Warning, TEXT("SOLAR/ASTEROIDS nicht gefunden"));
+		return 0;
+	}
+	TArray<FString> Files;
+	IFileManager::Get().FindFiles(Files, *FPaths::Combine(Dir, TEXT("*.ini")), true, false);
+	Files.Sort();
+	int32 Count = 0;
+	for (const FString& F : Files)
+	{
+		fl::IniFile Ini = LoadIni(FPaths::Combine(Dir, F));
+		if (!Ini.bOk)
+		{
+			UE_LOG(LogFLImport, Warning, TEXT("%s: %s"), *F, UTF8_TO_TCHAR(Ini.Error.c_str()));
+			continue;
+		}
+		const fl::FlAsteroidField Field = fl::ParseAsteroidField(Ini);
+		const FString Stem = FPaths::GetBaseFilename(F);
+		const FString Name = TEXT("DA_Field_") + FFLModelImporter::SanitizeName(Stem);
+		if (!CreateAndSave<UFLAsteroidFieldData>(TEXT("/Game/Imported/AsteroidFields/") + Name, Name,
+			[&](UFLAsteroidFieldData* D) { FillAsteroidFieldData(D, Stem, Field); }))
+		{
+			return -1;
+		}
+		++Count;
+	}
+	UE_LOG(LogFLImport, Display, TEXT("%d Asteroidenfelder importiert"), Count);
+	return Count;
+}
+
 int32 UFLImportCommandlet::Main(const FString& Params)
 {
 	FString DataDir;
@@ -600,7 +680,7 @@ int32 UFLImportCommandlet::Main(const FString& Params)
 	FParse::Value(*Params, TEXT("-models="), ModelFilter); // "all" oder Schiff-Nickname
 	const bool bAllModels = ModelFilter == TEXT("all");
 	FFLModelImporter Models(DataDir); // gemeinsamer Importer: Texturen, Materialien und Modelle werden zwischengespeichert
-	if (ImportShips(DataDir, ModelFilter, Models) < 0 || ImportUniverse(DataDir) < 0 || ImportMarkets(DataDir) < 0 || ImportFactions(DataDir) < 0
+	if (ImportShips(DataDir, ModelFilter, Models) < 0 || ImportUniverse(DataDir) < 0 || ImportMarkets(DataDir) < 0 || ImportFactions(DataDir) < 0 || ImportAsteroidFields(DataDir) < 0
 		|| ImportSolars(DataDir, bAllModels, Models) < 0 || ImportEquipment(DataDir, bAllModels, Models) < 0 || ImportGoods(DataDir) < 0)
 	{
 		return 2;

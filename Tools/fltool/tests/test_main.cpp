@@ -1,6 +1,7 @@
 // Tests fuer flformats. Nur synthetische Daten, keine Originaldateien.
 #include "FlIni.h"
 #include "FlImage.h"
+#include "FlAsteroidField.h"
 #include "FlFaction.h"
 #include "FlMarket.h"
 #include "FlMath.h"
@@ -622,6 +623,23 @@ static void TestFactions()
 	CHECK(ParseFactions(IniFile::Parse(""), IniFile::Parse(""), IniFile::Parse("")).empty());
 }
 
+static void TestAsteroidField()
+{
+	const char* Text =
+		"[Field]\ncube_size = 400\ndiffuse_color = 220, 220, 180\n[Exclusion Zones]\nexclusion = Zone_a\nexclude_billboards = 1\nexclusion = Zone_b\n"
+		"[Cube]\nasteroid = rock30, 0.6, 0.2, -0.2, 45, 10, 20\nasteroid = kurz, 1, 2\nasteroid = rock10, -0.3, -0.3, 0.8, 85, 0, 185\n"
+		"[Band]\nshape = belt_04\n";
+	auto F = ParseAsteroidField(IniFile::Parse(Text));
+	CHECK(F.Cubes.size() == 2);                                  // zu kurze Zeile uebersprungen
+	CHECK(F.Cubes[0].Asteroid == "rock30" && F.Cubes[0].Offset[0] == 0.6f && F.Cubes[0].Offset[2] == -0.2f && F.Cubes[0].RotationDeg[2] == 20.0f);
+	CHECK(F.Cubes[1].Asteroid == "rock10" && F.Cubes[1].RotationDeg[2] == 185.0f);
+	CHECK(F.Exclusions.size() == 2 && F.Exclusions[1] == "Zone_b");
+	CHECK(F.Sections.size() == 3);                                // Field, Exclusion Zones, Band (Cube nicht als Sektion)
+	CHECK(F.Sections[0].Name == "Field" && F.Sections[0].Props[1].second == "220, 220, 180");
+	CHECK(F.Sections[2].Props[0].first == "shape");
+	CHECK(ParseAsteroidField(IniFile::Parse("")).Cubes.empty());
+}
+
 int main()
 {
 	TestUtf();
@@ -637,6 +655,7 @@ int main()
 	TestMath();
 	TestMarkets();
 	TestFactions();
+	TestAsteroidField();
 	TestEmptyPartHasNoMesh();
 	std::printf(Failures ? "%d Fehler\n" : "alle Tests bestanden\n", Failures);
 	return Failures ? 1 : 0;

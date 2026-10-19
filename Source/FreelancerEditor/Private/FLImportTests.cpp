@@ -280,3 +280,37 @@ bool FFLFactionImportTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Faction-Property mit Praefix"), D->Properties.FindRef(FName("fp_legality")), FString(TEXT("lawful")));
 	return true;
 }
+
+#include "Data/FLAsteroidFieldData.h"
+#include "FlAsteroidField.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLAsteroidFieldImportTest, "Freelancer.Import.AsteroidField",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLAsteroidFieldImportTest::RunTest(const FString& Parameters)
+{
+	const fl::FlAsteroidField F = fl::ParseAsteroidField(fl::IniFile::Parse(
+		"[Field]\ncube_size = 400\n[Exclusion Zones]\nexclusion = Zone_a\n[Cube]\nasteroid = rock30, 0.6, 0.2, -0.5, 0, 0, 90\n[Band]\nshape = belt\nshape = belt2\n"));
+	UFLAsteroidFieldData* D = NewObject<UFLAsteroidFieldData>(GetTransientPackage());
+	UFLImportCommandlet::FillAsteroidFieldData(D, TEXT("test_field"), F);
+	TestEqual(TEXT("Name"), D->FieldName, FName("test_field"));
+	TestEqual(TEXT("Wuerfelgroesse in cm"), D->CubeSize, 40000.f);
+	TestEqual(TEXT("ein Asteroid"), D->Cubes.Num(), 1);
+	if (D->Cubes.Num() == 1)
+	{
+		// Original (0.6, 0.2, -0.5) -> Unreal (x = -z = 0.5, y = x = 0.6, z = y = 0.2)
+		TestEqual(TEXT("Offset x (vorn)"), D->Cubes[0].Offset.X, 0.5);
+		TestEqual(TEXT("Offset y (rechts)"), D->Cubes[0].Offset.Y, 0.6, 1e-6);
+		TestEqual(TEXT("Offset z (oben)"), D->Cubes[0].Offset.Z, 0.2, 1e-6);
+		TestFalse(TEXT("Drehung gesetzt"), D->Cubes[0].Rotation.Equals(FQuat::Identity, 0.01));
+	}
+	TestEqual(TEXT("Ausschluss"), D->Exclusions.Num(), 1);
+	TestEqual(TEXT("Abschnitte (ohne Cube)"), D->Sections.Num(), 3);
+	const FFLFieldSection* Band = D->Sections.FindByPredicate([](const FFLFieldSection& S) { return S.Name == FName("Band"); });
+	TestNotNull(TEXT("Band"), Band);
+	if (Band)
+	{
+		TestEqual(TEXT("Wiederholter Schluessel"), Band->Properties.FindRef(FName("shape#2")), FString(TEXT("belt2")));
+	}
+	return true;
+}

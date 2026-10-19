@@ -14,6 +14,8 @@ class UFLSystemData;
 class UFLMarketData;
 class UFLSolarData;
 class UFLFactionData;
+class UFLAsteroidFieldData;
+namespace fl { struct FlAsteroidField; }
 namespace fl { struct FlFaction; }
 class FFLModelImporter;
 namespace fl { struct FlBaseMarket; }
@@ -41,6 +43,8 @@ public:
 
 	static void FillFactionData(UFLFactionData* Data, const fl::FlFaction& Faction);
 
+	static void FillAsteroidFieldData(UFLAsteroidFieldData* Data, const FString& FieldName, const fl::FlAsteroidField& Field);
+
 	static void FillGoodData(UFLGoodData* Data, const fl::FlRecord& Record);
 
 	/** Fuellt ein System aus dem [system]-Eintrag der universe.ini und den Records der System-INI (Objekte, Zonen, Info). */
@@ -61,4 +65,5 @@ private:
 	int32 ImportUniverse(const FString& DataDir);
 	int32 ImportMarkets(const FString& DataDir);
 	int32 ImportFactions(const FString& DataDir);
+	int32 ImportAsteroidFields(const FString& DataDir);
 };

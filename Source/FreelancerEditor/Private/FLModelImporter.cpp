@@ -2,6 +2,7 @@
 
 #include "FLModelImporter.h"
 
+#include "AssetCompilingManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Data/FLModelData.h"
 #include "Engine/StaticMesh.h"
@@ -217,6 +218,8 @@ UStaticMesh* FFLModelImporter::BuildStaticMesh(const FString& Name, const fl::Vm
 	}
 	const FString AssetName = TEXT("SM_") + SanitizeName(Name);
 	bool bExisting = false;
+	// Hintergrund-Builds (Distanzfelder, Mesh-Karten) frueherer Meshes abschliessen, bevor ein vorhandenes Mesh neu gebaut wird (sonst Wettlauf/Absturz)
+	FAssetCompilingManager::Get().FinishAllCompilation();
 	UStaticMesh* SM = LoadOrCreate<UStaticMesh>(TEXT("/Game/Imported/Meshes/") + AssetName, AssetName, bExisting);
 
 	FMeshDescription Desc;
@@ -247,6 +250,11 @@ UStaticMesh* FFLModelImporter::BuildStaticMesh(const FString& Name, const fl::Vm
 		{
 			Uvs.Set(Inst, 0, FVector2f(Mesh.Uv0[V * 2], Mesh.Uv0[V * 2 + 1]));
 		}
+		else
+		{
+			// Ohne Texturkoordinaten (z. B. Tueren): einfache Projektion, damit Tangenten nicht entarten
+			Uvs.Set(Inst, 0, FVector2f(Positions[Vid].Y * 0.01f, Positions[Vid].Z * 0.01f));
+		}
 		Instances.Add(Inst);
 	}
 
@@ -273,11 +281,21 @@ UStaticMesh* FFLModelImporter::BuildStaticMesh(const FString& Name, const fl::Vm
 	Params.bBuildSimpleCollision = false;
 	Params.bFastBuild = true;
 	SM->BuildFromMeshDescriptions(Descs, Params);
+	FAssetCompilingManager::Get().FinishAllCompilation();
+	{
+		const FBoxSphereBounds B = SM->GetBounds();
+		if (B.Origin.ContainsNaN() || B.BoxExtent.ContainsNaN() || !FMath::IsFinite(B.SphereRadius))
+		{
+			UE_LOG(LogFLModel, Warning, TEXT("Mesh %s hat ungueltige Grenzen und wird uebersprungen"), *Name);
+			return nullptr;
+		}
+	}
 	if (!bExisting)
 	{
 		FAssetRegistryModule::AssetCreated(SM);
 	}
 	SM->MarkPackageDirty();
+	FAssetCompilingManager::Get().FinishAllCompilation();
 	SaveAsset(SM);
 	return SM;
 }
