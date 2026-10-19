@@ -1,6 +1,7 @@
 // Parser fuer Freelancer-INI-Dateien (Textform; BINI wird erkannt und abgelehnt).
 // Sektionen koennen mehrfach vorkommen, Keys wiederholt; Namen sind nicht case-sensitiv.
 #pragma once
+#include "FlApi.h"
 #include <string>
 #include <vector>
 
@@ -13,7 +14,7 @@ struct IniEntry
 	int Line = 0;
 };
 
-struct IniSection
+struct FLF_API IniSection
 {
 	std::string Name;
 	std::vector<IniEntry> Entries;
@@ -21,7 +22,7 @@ struct IniSection
 	std::vector<const IniEntry*> FindAll(const std::string& Key) const;
 };
 
-struct IniFile
+struct FLF_API IniFile
 {
 	std::vector<IniSection> Sections;
 	std::string Error;
@@ -31,5 +32,5 @@ struct IniFile
 	std::vector<const IniSection*> FindAll(const std::string& Name) const;
 };
 
-bool IEquals(const std::string& A, const std::string& B);
+FLF_API bool IEquals(const std::string& A, const std::string& B);
 }

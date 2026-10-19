@@ -24,7 +24,7 @@ ctest --test-dir ~/UEBuild/fltool --output-on-failure
 | `fltool mesh export <datei> <out.glb> [--all-lods] [--mat <datei.mat>]` | VMesh-Bibliothek flach nach glTF (Teile liegen **nicht** an ihrer Position, nur zum Ansehen) |
 | `fltool cmp export <datei.cmp> <out.glb> [--mat <datei.mat>]` | Compound-Modell mit Teilen, Konstrukt-Transformationen (Fix/Rev/Pris im Ruhezustand) und Hardpoints als Knoten `HP_<name>` |
 
-**Quellen** (`Tools/fltool/src/`): `Utf` (Container), `Ini` (Textform; BINI wird abgelehnt), `Vms` (VMeshData, Szenen, GLB-Schreiber), `Model` (Material-CRC, Materialien, Hardpoints, Konstrukte, Teile).
+**Quellen:** die Formatbibliothek liegt als UE-Modul in `Source/FreelancerFormats/` (Public/Private) und wird von `Tools/fltool/CMakeLists.txt` mitgebaut; die CLI steht in `Tools/fltool/src/main.cpp`. Module: `Utf` (Container), `Ini` (Textform; BINI wird abgelehnt), `Vms` (VMeshData, Szenen, GLB-Schreiber), `Model` (Material-CRC, Materialien, Hardpoints, Konstrukte, Teile), `ShipData` (shiparch.ini → `FlShipRecord`).
 **Tests**: `Tools/fltool/tests/test_main.cpp` (nur synthetische Daten).
 **Formatreferenz**: Librelancer (MIT), `Reference/Librelancer/src/LibreLancer/Utf/`. Die CRC-Tabelle in `src/CrcTable.inc` stammt von dort.
 

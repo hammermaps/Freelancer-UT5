@@ -1,5 +1,6 @@
 // Materialien, Hardpoints und CRC-Hashes aus Freelancer-Modelldateien.
 #pragma once
+#include "FlApi.h"
 #include "Utf.h"
 #include <cstdint>
 #include <map>
@@ -9,7 +10,7 @@
 namespace fl
 {
 // CRC fuer Modell-/Materialnamen (nicht case-sensitiv). Referenz: Librelancer CrcTool.FLModelCrc.
-uint32_t FlModelCrc(const std::string& Name);
+FLF_API uint32_t FlModelCrc(const std::string& Name);
 
 struct FlMaterial
 {
@@ -20,7 +21,7 @@ struct FlMaterial
 };
 
 // "Material library" -> Map CRC(Name) -> Material
-std::map<uint32_t, FlMaterial> ReadMaterials(const UtfNode& Root);
+FLF_API std::map<uint32_t, FlMaterial> ReadMaterials(const UtfNode& Root);
 
 struct FlHardpoint
 {
@@ -31,7 +32,7 @@ struct FlHardpoint
 };
 
 // "Hardpoints"/{Fixed|Revolute}/<name>/{Position, Orientation}
-std::vector<FlHardpoint> ReadHardpoints(const UtfNode& Root);
+FLF_API std::vector<FlHardpoint> ReadHardpoints(const UtfNode& Root);
 
 struct FlConstruct
 {
@@ -45,14 +46,14 @@ struct FlConstruct
 };
 
 // "Cmpnd"/"Cons"/{Fix,Rev,Pris}. Unbekannte Typen (Loose, Sphere) werden uebersprungen.
-std::vector<FlConstruct> ReadConstructs(const UtfNode& Root);
+FLF_API std::vector<FlConstruct> ReadConstructs(const UtfNode& Root);
 
 struct FlPart
 {
 	std::string Object; // "Object name", Kind-Name im Konstrukt
 	std::string File;   // "File name", Knoten mit dem 3db-Inhalt im .cmp
 };
-std::vector<FlPart> ReadParts(const UtfNode& Root);
+FLF_API std::vector<FlPart> ReadParts(const UtfNode& Root);
 
 struct FlMeshRef
 {
@@ -60,8 +61,8 @@ struct FlMeshRef
 	uint16_t StartMesh = 0, MeshCount = 0;
 };
 // Erste VMeshRef im Modell-Knoten ("MultiLevel"/"Level0"/"VMeshPart"/"VMeshRef"), sonst false.
-bool ReadLevel0Ref(const UtfNode& Model, FlMeshRef& Out);
+FLF_API bool ReadLevel0Ref(const UtfNode& Model, FlMeshRef& Out);
 
 // 3x3 (zeilenweise) -> Quaternion x,y,z,w
-void RotationToQuat(const float R[9], float Q[4]);
+FLF_API void RotationToQuat(const float R[9], float Q[4]);
 }

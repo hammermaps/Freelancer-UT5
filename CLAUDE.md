@@ -123,6 +123,23 @@ Hilfswerkzeuge (`fltool`, `tex_to_png.py`, Testlevel-Skript) sind in **[Tools.md
 - Client: `~/UEBuild/Archive/LinuxClient/FreelancerClient.sh 127.0.0.1:7777` (headless-Test mit `-nullrhi -nosound`).
 - Verbindungstest: Server + 2 Clients, im Server-Log `Join succeeded` ×2, in den Client-Logs `Welcomed by server`. Die Konsolenausgabe ist gepuffert; die Logs stehen unter `<Archive>/Linux*/Freelancer/Saved/Logs/`.
 
+## Neue Module anlegen (Checkliste, gelernt bei FreelancerFormats/FreelancerEditor)
+
+Jedes neue UE-Modul braucht **alles** davon, sonst bricht Build oder Start:
+1. Ordner `Source/<Modul>/` mit `<Modul>.Build.cs` (Klasse = Modulname) und `Public/`, `Private/`.
+2. **Moduldefinition in genau einer `.cpp`:** `IMPLEMENT_MODULE(FDefaultModuleImpl, <Modul>);` mit `#include "Modules/ModuleManager.h"`. Ohne sie lädt der Editor mit „Das Spielemodul … konnte nach dem Laden nicht erfolgreich initialisiert werden“ nicht. Primäres Spielmodul: `IMPLEMENT_PRIMARY_GAME_MODULE`.
+3. **Eintrag in `Freelancer.uproject` → `Modules`** (`Name`, `Type`: `Runtime` oder `Editor`, `LoadingPhase`). Editor-Module nur mit `Type: Editor`, damit sie nicht in Server/Client landen.
+4. **Eintrag in der Target-Datei:** `ExtraModuleNames` in `Source/<Target>.Target.cs` (Editor-Module nur in `FreelancerEditor.Target.cs`).
+5. **API-Makro für Symbole, die andere Module nutzen:** Klassen/Structs/freie Funktionen mit `<MODUL>_API` markieren (`FREELANCER_API`, `FREELANCERFORMATS_API`). Ohne das gibt es Linker-Fehler `undefined symbol` (Symbole sind standardmäßig versteckt). Bei Code, der auch außerhalb von UE gebaut wird (CMake/`fltool`), ein eigenes Makro wie `FLF_API` in `Public/FlApi.h` verwenden: im UE-Build `FREELANCERFORMATS_API` (davor `#include "HAL/Platform.h"`, das `DLLEXPORT` definiert), sonst leer. `UCLASS` brauchen `<MODUL>_API` an der Klasse.
+6. **Include-Pfade:** Hat ein Modul kein `Public/`-Verzeichnis (wie `Source/Freelancer`), `PublicIncludePaths.Add(ModuleDirectory);` in der `Build.cs`, damit andere Module `Data/FLShipData.h` einbinden können. Abhängigkeiten in `PublicDependencyModuleNames`/`PrivateDependencyModuleNames` eintragen.
+7. Reiner STL-Code ohne UE-Typen (z. B. `FreelancerFormats`): `PCHUsage = NoPCHs`, `bUseUnity = false`, `bEnableExceptions = false`, `ShadowVariableWarningLevel = Off`, Abhängigkeit nur `Core`. Die Quellen dieses Moduls baut zusätzlich `Tools/fltool/CMakeLists.txt` (eine Quelle für Editor-Import und Werkzeuge); Dateien, die nur UE betreffen (`FreelancerFormats.cpp`), stehen nicht in der CMake-Liste.
+8. Neue Dateien/Module: Build mit `Build.sh FreelancerEditor Linux Development -Project=<Pfad>/Freelancer.uproject -WaitMutex -NoUBA`; Automation Tests unter `Source/<Modul>/Private/*Tests.cpp` (`IMPLEMENT_SIMPLE_AUTOMATION_TEST`), Aufruf siehe Tests-Regel.
+
+**Automation Tests ausführen** (ohne `Quit`-ExecCmd, sonst endet der Lauf vor dem Test):
+`UnrealEditor-Cmd Freelancer.uproject -ExecCmds="Automation RunTests Freelancer.Import" -TestExit="Automation Test Queue Empty" -unattended -nullrhi -nosplash -ReportExportPath=<ordner>` (Ergebnis in `<ordner>/index.json`, UTF-8 mit BOM).
+
+**Import ausführen:** `UnrealEditor-Cmd Freelancer.uproject -run=FLImport -source=<GameData/FL/DATA> -unattended -nullrhi -nosplash` (schreibt nach `Content/Imported/`, ist nicht im Repo).
+
 ## Konventionen
 
 - C++-Klassen mit Präfix **`FL`** (z. B. `AFLShip`, `UFLShipData`); Ordner nach Thema: `Flight/`, `Combat/`, `World/`, `Economy/`, `Missions/`, `UI/`, `Data/`.

@@ -1,6 +1,7 @@
 // Tests fuer flformats. Nur synthetische Daten, keine Originaldateien.
 #include "Ini.h"
 #include "Model.h"
+#include "ShipData.h"
 #include "Utf.h"
 #include "Vms.h"
 #include <cstdio>
@@ -277,6 +278,23 @@ static void TestCmp()
 	CHECK(Empty.size() >= 20 && std::memcmp(Empty.data(), "glTF", 4) == 0);
 }
 
+static void TestShips()
+{
+	const char* Text =
+		"[Simple]\nnickname = generic_pilot\n[Ship]\nnickname = li_fighter\ntype = FIGHTER\nids_name = 237034\nmass = 100.5\nhit_pts = 1300\n"
+		"hold_size = 25\nsteering_torque = 24000.0, 24000, 58000\nDA_archetype = ships\\liberty\\li_fighter.cmp\n"
+		"material_library = a.mat\nmaterial_library = fx\\b.mat\ncockpit = cockpits\\l.ini\n[Ship]\ntype = X\n[Ship]\nnickname = bad\nmass = abc\n";
+	auto Ships = ParseShipArch(IniFile::Parse(Text));
+	CHECK(Ships.size() == 2);                      // Simple und Eintrag ohne nickname fallen weg
+	CHECK(Ships[0].Nickname == "li_fighter" && Ships[0].Type == "FIGHTER" && Ships[0].IdsName == 237034);
+	CHECK(Ships[0].Mass == 100.5f && Ships[0].HitPts == 1300 && Ships[0].HoldSize == 25);
+	CHECK(Ships[0].SteeringTorque[0] == 24000.0f && Ships[0].SteeringTorque[2] == 58000.0f);
+	CHECK(Ships[0].Archetype == "ships/liberty/li_fighter.cmp" && Ships[0].Cockpit == "cockpits/l.ini");
+	CHECK(Ships[0].MaterialLibraries.size() == 2 && Ships[0].MaterialLibraries[1] == "fx/b.mat");
+	CHECK(Ships[1].Nickname == "bad" && Ships[1].Mass == 0.0f);   // Unsinn wird 0
+	CHECK(ParseShipArch(IniFile::Parse("")).empty());
+}
+
 int main()
 {
 	TestUtf();
@@ -284,6 +302,7 @@ int main()
 	TestVms();
 	TestModel();
 	TestCmp();
+	TestShips();
 	std::printf(Failures ? "%d Fehler\n" : "alle Tests bestanden\n", Failures);
 	return Failures ? 1 : 0;
 }

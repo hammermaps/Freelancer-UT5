@@ -1,6 +1,7 @@
 // Reader fuer Freelancer-UTF-Container (.cmp .3db .mat .txm .utf ...).
 // Format-Referenz: Librelancer (MIT), LibreLancer/Utf/UtfFile.cs
 #pragma once
+#include "FlApi.h"
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -17,7 +18,7 @@ struct UtfNode
 };
 
 // Liest eine UTF-Datei; bei Fehler Root == nullptr und Error gesetzt.
-struct UtfFile
+struct FLF_API UtfFile
 {
 	std::unique_ptr<UtfNode> Root;
 	std::string Error;
@@ -25,5 +26,5 @@ struct UtfFile
 	static UtfFile Parse(const std::vector<uint8_t>& Bytes);
 };
 
-const UtfNode* FindChild(const UtfNode& Parent, const std::string& Name); // ohne Gross/Klein
+FLF_API const UtfNode* FindChild(const UtfNode& Parent, const std::string& Name); // ohne Gross/Klein
 }
