@@ -63,6 +63,10 @@ fltool cmp export SHIPS/ORDER/OR_ELITE/or_elite.cmp glb/or_elite.glb --mat SHIPS
 
 Erzeugt `/Game/Freelancer/Maps/L_Test_Space` im Editor (`UnrealEditor-Cmd Freelancer.uproject -ExecutePythonScript=... -unattended -nullrhi`).
 
+## REA (Reverse Engineering) – MCP `rea`
+
+Zum Analysieren der Original-EXE/-DLLs; Einrichtung, Werkzeuge und Regeln in `CLAUDE.md`, Abschnitt „Reverse Engineering (REA)“.
+
 ## Geplant
 
 - Emissive-Ableitung; Qualitätsvergleich der Modelle (Real-ESRGAN, PBRify, GTAV) an einer größeren Stichprobe; Stapel-Lauf über alle importierten Texturen.
