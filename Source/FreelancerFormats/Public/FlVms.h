@@ -50,7 +50,8 @@ struct SceneNode
 };
 
 // Kopiert Gruppen [FirstGroup, FirstGroup+GroupCount) mit neu nummerierten Vertices (Teilmesh eines Teils).
-FLF_API VmsMesh ExtractGroups(const VmsMesh& Src, size_t FirstGroup, size_t GroupCount);
+// VertexBase = StartVertex der Mesh-Referenz des Teils (Indizes sind nach ParseVms Gruppen-absolut, hier kommt der Teile-Versatz dazu).
+FLF_API VmsMesh ExtractGroups(const VmsMesh& Src, size_t FirstGroup, size_t GroupCount, uint32_t VertexBase = 0);
 
 // Szene mit Knotenhierarchie (Teile eines .cmp, Hardpoints als leere Knoten).
 FLF_API std::vector<uint8_t> BuildGlbScene(const std::vector<SceneNode>& Scene, const std::map<uint32_t, GlbMaterial>* Mats = nullptr);

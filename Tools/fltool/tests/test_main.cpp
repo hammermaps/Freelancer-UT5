@@ -471,11 +471,47 @@ static void TestBuildModel()
 	CHECK(std::fabs(R[8] - 1.0f) < 1e-6f && std::fabs(R[1] + R[3]) < 1e-6f && std::fabs(std::fabs(R[1]) - 1.0f) < 1e-6f);
 }
 
+// 4 Vertices (x = 0..3), eine Gruppe mit StartVertex 1 (End 3), Indizes relativ {0,1,2}, FVF nur XYZ (0x2).
+static std::vector<uint8_t> MakeVmsRelative(uint16_t GroupStart)
+{
+	std::vector<uint8_t> B;
+	auto P16 = [&](uint16_t V) { B.insert(B.end(), (uint8_t*)&V, (uint8_t*)&V + 2); };
+	auto P32 = [&](uint32_t V) { B.insert(B.end(), (uint8_t*)&V, (uint8_t*)&V + 4); };
+	auto PF = [&](float V) { B.insert(B.end(), (uint8_t*)&V, (uint8_t*)&V + 4); };
+	P32(1); P32(4);
+	P16(1); P16(3); P16(0x2); P16(4);
+	P32(7); P16(GroupStart); P16(GroupStart + 2); P16(3); P16(0xCC);
+	P16(0); P16(1); P16(2);
+	for (int v = 0; v < 4; ++v) { PF((float)v); PF(0); PF(0); }
+	return B;
+}
+
+static void TestVmsRelativeIndices()
+{
+	VmsMesh M; std::string Err;
+	CHECK(ParseVms(MakeVmsRelative(1), M, Err));
+	CHECK(M.Indices.size() == 3 && M.Indices[0] == 1 && M.Indices[1] == 2 && M.Indices[2] == 3);   // relativ + StartVertex
+	CHECK(M.Positions[M.Indices[0] * 3] == 1.0f);
+	VmsMesh Bad;
+	CHECK(!ParseVms(MakeVmsRelative(2), Bad, Err));      // 2 + 2 = 4 >= 4 Vertices: ungueltig
+
+	// ExtractGroups mit Teile-Versatz: Quelle mit 6 Vertices, Gruppe indiziert 0..2, Versatz 3 -> Vertices 3..5
+	VmsMesh Src;
+	Src.Positions = {0,0,0, 1,0,0, 2,0,0, 3,0,0, 4,0,0, 5,0,0};
+	Src.Indices = {0, 1, 2};
+	VmsGroup G; G.NumRefIndices = 3; G.IndexStart = 0;
+	Src.Groups = {G};
+	VmsMesh Sub = ExtractGroups(Src, 0, 1, 3);
+	CHECK(Sub.Groups.size() == 1 && Sub.Positions.size() == 9 && Sub.Positions[0] == 3.0f && Sub.Positions[6] == 5.0f);
+	CHECK(ExtractGroups(Src, 0, 1, 4).Groups.empty());   // Versatz zu gross -> Gruppe ausgelassen
+}
+
 int main()
 {
 	TestUtf();
 	TestIni();
 	TestVms();
+	TestVmsRelativeIndices();
 	TestModel();
 	TestCmp();
 	TestShips();

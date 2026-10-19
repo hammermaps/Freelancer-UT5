@@ -41,7 +41,14 @@ bool ParseVms(const std::vector<uint8_t>& D, VmsMesh& M, std::string& Err)
 	}
 	M.Indices.resize(IndexCount);
 	std::memcpy(M.Indices.data(), D.data() + HeaderEnd, (size_t)IndexCount * 2);
-	for (uint16_t Idx : M.Indices) if (Idx >= VertCount) { Err = "Index ausserhalb der Vertices"; return false; }
+	// Die Indizes jeder Gruppe zaehlen ab deren StartVertex (Original: relativ zur Gruppe) -> absolut machen.
+	for (const VmsGroup& G : M.Groups)
+		for (uint32_t i = 0; i < G.NumRefIndices; ++i)
+		{
+			uint32_t Abs = (uint32_t)M.Indices[G.IndexStart + i] + G.StartVertex;
+			if (Abs >= VertCount) { Err = "Index ausserhalb der Vertices"; return false; }
+			M.Indices[G.IndexStart + i] = (uint16_t)Abs;
+		}
 
 	M.Positions.resize((size_t)VertCount * 3);
 	if (M.bNormal) M.Normals.resize((size_t)VertCount * 3);
@@ -200,7 +207,7 @@ std::vector<uint8_t> BuildGlb(const std::vector<std::pair<std::string, VmsMesh>>
 	return BuildGlbScene(Scene, Mats);
 }
 
-VmsMesh ExtractGroups(const VmsMesh& Src, size_t FirstGroup, size_t GroupCount)
+VmsMesh ExtractGroups(const VmsMesh& Src, size_t FirstGroup, size_t GroupCount, uint32_t VertexBase)
 {
 	VmsMesh Out;
 	Out.Fvf = Src.Fvf; Out.Stride = Src.Stride; Out.bNormal = Src.bNormal; Out.bDiffuse = Src.bDiffuse; Out.TexCoords = Src.TexCoords;
@@ -210,9 +217,13 @@ VmsMesh ExtractGroups(const VmsMesh& Src, size_t FirstGroup, size_t GroupCount)
 		const VmsGroup& G = Src.Groups[g];
 		VmsGroup NG = G;
 		NG.IndexStart = (uint32_t)Out.Indices.size();
+		bool bValid = true;
+		for (uint32_t i = 0; i < G.NumRefIndices; ++i)
+			if (G.IndexStart + i >= Src.Indices.size() || (size_t)Src.Indices[G.IndexStart + i] + VertexBase >= Src.Positions.size() / 3) { bValid = false; break; }
+		if (!bValid) continue; // Gruppe verweist ausserhalb des Vertexpuffers: auslassen
 		for (uint32_t i = 0; i < G.NumRefIndices; ++i)
 		{
-			uint16_t Old = Src.Indices[G.IndexStart + i];
+			uint16_t Old = (uint16_t)(Src.Indices[G.IndexStart + i] + VertexBase);
 			auto It = Remap.find(Old);
 			if (It == Remap.end())
 			{

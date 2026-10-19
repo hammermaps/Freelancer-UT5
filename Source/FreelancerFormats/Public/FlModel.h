@@ -59,6 +59,7 @@ FLF_API std::vector<FlPart> ReadParts(const UtfNode& Root);
 struct FlMeshRef
 {
 	uint32_t MeshCrc = 0;
+	uint16_t StartVertex = 0;
 	uint16_t StartMesh = 0, MeshCount = 0;
 };
 // Erste VMeshRef im Modell-Knoten ("MultiLevel"/"Level0"/"VMeshPart"/"VMeshRef"), sonst false.

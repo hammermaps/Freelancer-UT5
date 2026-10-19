@@ -131,6 +131,7 @@ bool ReadLevel0Ref(const UtfNode& Model, FlMeshRef& Out)
 	const UtfNode* Ref = VP ? FindChild(*VP, "VMeshRef") : nullptr;
 	if (!Ref || Ref->Data.size() < 20) return false;
 	std::memcpy(&Out.MeshCrc, Ref->Data.data() + 4, 4);
+	std::memcpy(&Out.StartVertex, Ref->Data.data() + 8, 2);
 	std::memcpy(&Out.StartMesh, Ref->Data.data() + 16, 2);
 	std::memcpy(&Out.MeshCount, Ref->Data.data() + 18, 2);
 	return true;
@@ -281,7 +282,7 @@ bool BuildModel(const UtfNode& Root, FlModel& Out, std::string& Error)
 				if (It != Meshes.end())
 				{
 					MP.bHasMesh = true;
-					MP.Mesh = ExtractGroups(It->second, Ref.StartMesh, Ref.MeshCount);
+					MP.Mesh = ExtractGroups(It->second, Ref.StartMesh, Ref.MeshCount, Ref.StartVertex);
 				}
 			}
 			MP.Hardpoints = ReadHardpoints(*Model);

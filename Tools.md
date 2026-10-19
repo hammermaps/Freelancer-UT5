@@ -53,6 +53,13 @@ Modelle: Real-ESRGAN x4plus, 4x-PBRify, 4xTextures_GTAV (liegen in `GameData/Wor
 Umgebung: lokale venv `~/UEBuild/pyenv` (`python3 -m venv --system-site-packages ~/UEBuild/pyenv && ~/UEBuild/pyenv/bin/pip install numpy`); Torch 2.14.1 (CUDA 13) und spandrel sind dort installiert (`pip install torch spandrel --index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://pypi.org/simple`); GPU RTX 5060 (8 GB) wird erkannt, ohne CUDA fällt das Skript auf die CPU zurück. Getestet mit Real-ESRGAN x4plus und 4x-PBRify (3 Texturen, ca. 11 s inkl. Modellladen).
 Test: `~/UEBuild/pyenv/bin/python -I Tools/tests/test_upscale_textures.py`.
 
+## render_glb.py (Python, numpy, matplotlib) – `Tools/render_glb.py`
+
+```
+python3 -I Tools/render_glb.py <datei.glb> <out.png>
+```
+Software-Darstellung einer `.glb` (z. B. von `fltool cmp export`) in drei Ansichten (Seite, Draufsicht, Vorn), schattiert nach Normalen mit Teile-Hierarchie. Dient der schnellen Prüfung von Form und Ausrichtung ohne Blender/Engine; hat den Index-Fehler beim VMesh-Import sichtbar gemacht. Test: `~/UEBuild/pyenv/bin/python -I Tools/tests/test_render_glb.py` (matplotlib in der venv installiert).
+
 ## Typischer Ablauf: Schiff nach Blender
 
 ```
@@ -70,5 +77,6 @@ Zum Analysieren der Original-EXE/-DLLs; Einrichtung, Werkzeuge und Regeln in `CL
 
 ## Geplant
 
+- Screenshot aus dem Spiel/Editor (Vulkan liefert in `-game`/Editor-Skript derzeit schwarze Bilder bzw. beendet den Editor nach wenigen Frames; ungelöst, `create_ship_view_level.py` erzeugt `L_ShipView` für spätere Versuche).
 - Emissive-Ableitung; Qualitätsvergleich der Modelle (Real-ESRGAN, PBRify, GTAV) an einer größeren Stichprobe; Stapel-Lauf über alle importierten Texturen.
 - Manifest-Werkzeug (alle Schiffe/Stationen mit ihren Dateien), Loose-/Sphere-Konstrukte, animierte Rev/Pris-Posen, Wireframes (VMeshWire).
