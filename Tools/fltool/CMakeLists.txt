@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(FORMATS ${CMAKE_CURRENT_SOURCE_DIR}/../../Source/FreelancerFormats)
 add_library(flformats STATIC
 	${FORMATS}/Private/FlUtf.cpp ${FORMATS}/Private/FlIni.cpp ${FORMATS}/Private/FlVms.cpp
-	${FORMATS}/Private/FlModel.cpp ${FORMATS}/Private/FlShipData.cpp ${FORMATS}/Private/FlRecords.cpp ${FORMATS}/Private/FlImage.cpp ${FORMATS}/Private/FlMath.cpp ${FORMATS}/Private/FlMarket.cpp ${FORMATS}/Private/FlFaction.cpp ${FORMATS}/Private/FlAsteroidField.cpp)
+	${FORMATS}/Private/FlModel.cpp ${FORMATS}/Private/FlShipData.cpp ${FORMATS}/Private/FlRecords.cpp ${FORMATS}/Private/FlImage.cpp ${FORMATS}/Private/FlMath.cpp ${FORMATS}/Private/FlMarket.cpp ${FORMATS}/Private/FlFaction.cpp ${FORMATS}/Private/FlAsteroidField.cpp ${FORMATS}/Private/FlSphere.cpp)
 target_include_directories(flformats PUBLIC ${FORMATS}/Public PRIVATE ${FORMATS}/Private)
 
 add_executable(fltool src/main.cpp)

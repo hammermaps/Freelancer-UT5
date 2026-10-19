@@ -16,6 +16,7 @@
 #include "FlFaction.h"
 #include "FlMarket.h"
 #include "FlMath.h"
+#include "FlSphere.h"
 #include "FlModel.h"
 #include "FLModelImporter.h"
 #include "FlRecords.h"
@@ -502,6 +503,17 @@ void UFLImportCommandlet::FillSolarData(UFLSolarData* Data, const fl::FlRecord& 
 	FillProperties(Data->Properties, R);
 }
 
+void UFLImportCommandlet::ApplySphere(UFLSolarData* Data, const fl::FlSphere& Sphere)
+{
+	if (Sphere.Radius > 0.f)
+	{
+		Data->Radius = Sphere.Radius * 100.f; // Meter -> cm (ueberschreibt solar_radius, die Kugel ist massgeblich)
+	}
+	Data->PlanetSides = Sphere.Sides;
+	Data->PlanetSideMaterials.Reset();
+	for (const std::string& M : Sphere.SideMaterials) { Data->PlanetSideMaterials.Add(UTF8_TO_TCHAR(M.c_str())); }
+}
+
 int32 UFLImportCommandlet::ImportSolars(const FString& DataDir, bool bWithModels, FFLModelImporter& Models)
 {
 	int32 Count = 0;
@@ -529,6 +541,13 @@ int32 UFLImportCommandlet::ImportSolars(const FString& DataDir, bool bWithModels
 			if (!CreateAndSave<UFLSolarData>(TEXT("/Game/Imported/Solars/") + Name, Name, [&R, &Models, bWithModels](UFLSolarData* D)
 				{
 					FillSolarData(D, R);
+					if (D->SourceArchetype.EndsWith(TEXT(".sph"), ESearchCase::IgnoreCase))
+					{
+						const FString SphPath = Models.ResolvePath(D->SourceArchetype);
+						fl::UtfFile Sph = SphPath.IsEmpty() ? fl::UtfFile() : fl::UtfFile::Load(TCHAR_TO_UTF8(*SphPath));
+						fl::FlSphere Sphere;
+						if (Sph.Root && fl::ReadSphere(*Sph.Root, Sphere)) { ApplySphere(D, Sphere); }
+					}
 					if (bWithModels && FFLModelImporter::IsImportableModelPath(D->SourceArchetype))
 					{
 						const FString Stem = FPaths::GetBaseFilename(D->SourceArchetype);

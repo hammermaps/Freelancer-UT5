@@ -219,6 +219,7 @@ bool FFLMarketImportTest::RunTest(const FString& Parameters)
 
 #include "Data/FLSolarData.h"
 #include "FLModelImporter.h"
+#include "FlSphere.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLSolarImportTest, "Freelancer.Import.Solar",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -247,6 +248,12 @@ bool FFLSolarImportTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Station (.cmp) ist importierbar"), FFLModelImporter::IsImportableModelPath(S->SourceArchetype));
 	TestTrue(TEXT(".3db importierbar"), FFLModelImporter::IsImportableModelPath(TEXT("a/b.3DB")));
 	TestFalse(TEXT("leerer Pfad"), FFLModelImporter::IsImportableModelPath(FString()));
+	fl::FlSphere Sphere;
+	Sphere.Radius = 3000.f; Sphere.Sides = 6; Sphere.SideMaterials = {"side1", "side2"};
+	UFLImportCommandlet::ApplySphere(P, Sphere);
+	TestEqual(TEXT("Kugelradius in cm"), P->Radius, 300000.f);
+	TestEqual(TEXT("Kugelseiten"), P->PlanetSides, 6);
+	TestEqual(TEXT("Seitenmaterialien"), P->PlanetSideMaterials.Num(), 2);
 	TestEqual(TEXT("Asset-Name bereinigt"), FFLModelImporter::SanitizeName(TEXT("a-b c.d")), FString(TEXT("a_b_c_d")));
 	return true;
 }

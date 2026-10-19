@@ -4,6 +4,7 @@
 #include "FlAsteroidField.h"
 #include "FlFaction.h"
 #include "FlMarket.h"
+#include "FlSphere.h"
 #include "FlMath.h"
 #include "FlModel.h"
 #include "FlRecords.h"
@@ -640,6 +641,28 @@ static void TestAsteroidField()
 	CHECK(ParseAsteroidField(IniFile::Parse("")).Cubes.empty());
 }
 
+static void TestSphere()
+{
+	auto Root = Dir("/");
+	auto S = Dir("Sphere");
+	float Radius = 4000.0f; int32_t Sides = 6;
+	S->Children.push_back(Leaf("Radius", &Radius, 4));
+	S->Children.push_back(Leaf("Sides", &Sides, 4));
+	S->Children.push_back(Leaf("M0", "planet_a_front\0", 15));
+	S->Children.push_back(Leaf("M1", "planet_a_back\0", 14));
+	S->Children.push_back(Leaf("M3", "luecke\0", 7));          // M2 fehlt: Aufzaehlung endet bei der Luecke
+	Root->Children.push_back(std::move(S));
+	FlSphere Sph;
+	CHECK(ReadSphere(*Root, Sph));
+	CHECK(Sph.Radius == 4000.0f && Sph.Sides == 6);
+	CHECK(Sph.SideMaterials.size() == 2 && Sph.SideMaterials[0] == "planet_a_front" && Sph.SideMaterials[1] == "planet_a_back");
+	CHECK(!ReadSphere(*Dir("/"), Sph));
+	auto Short = Dir("/"); auto S2 = Dir("Sphere");
+	S2->Children.push_back(Leaf("Radius", "ab", 2));            // zu kurz -> Radius bleibt 0
+	Short->Children.push_back(std::move(S2));
+	CHECK(ReadSphere(*Short, Sph) && Sph.Radius == 0.0f && Sph.SideMaterials.empty());
+}
+
 int main()
 {
 	TestUtf();
@@ -656,6 +679,7 @@ int main()
 	TestMarkets();
 	TestFactions();
 	TestAsteroidField();
+	TestSphere();
 	TestEmptyPartHasNoMesh();
 	std::printf(Failures ? "%d Fehler\n" : "alle Tests bestanden\n", Failures);
 	return Failures ? 1 : 0;

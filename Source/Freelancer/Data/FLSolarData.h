@@ -38,6 +38,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Solar")
 	float Radius = 0.f;
 
+	/** Planeten (.sph): Seitenzahl der Kugel und Materialnamen je Seite (M0..Mn), sonst leer */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Planet")
+	int32 PlanetSides = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Planet")
+	TArray<FString> PlanetSideMaterials;
+
 	/** Importiertes Modell; leer bei Planeten (.sph) oder fehlendem Modell */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Model")
 	TSoftObjectPtr<UFLModelData> Model;

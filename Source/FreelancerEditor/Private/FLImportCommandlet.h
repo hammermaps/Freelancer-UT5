@@ -16,7 +16,7 @@ class UFLSolarData;
 class UFLFactionData;
 class UFLAsteroidFieldData;
 namespace fl { struct FlAsteroidField; }
-namespace fl { struct FlFaction; }
+namespace fl { struct FlFaction; struct FlSphere; }
 class FFLModelImporter;
 namespace fl { struct FlBaseMarket; }
 namespace fl { struct FlShipRecord; struct FlRecord; }
@@ -40,6 +40,9 @@ public:
 	static void FillEquipmentData(UFLEquipmentData* Data, const fl::FlRecord& Record);
 	/** Fuellt ein Solar-Archetyp-Asset aus einem [Solar]-Eintrag der solararch.ini. */
 	static void FillSolarData(UFLSolarData* Data, const fl::FlRecord& Record);
+
+	/** Uebernimmt Radius, Seiten und Seitenmaterialien einer Planeten-Kugel (.sph). */
+	static void ApplySphere(UFLSolarData* Data, const fl::FlSphere& Sphere);
 
 	static void FillFactionData(UFLFactionData* Data, const fl::FlFaction& Faction);
 
