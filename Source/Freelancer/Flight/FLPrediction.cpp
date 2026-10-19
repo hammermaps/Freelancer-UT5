@@ -29,6 +29,14 @@ void FFLMoveHistory::Acknowledge(uint32 Sequence)
 	}
 }
 
+TArray<FFLMove> FFLMoveHistory::LastMoves(int32 MaxCount) const
+{
+	const int32 Start = FMath::Max(0, Moves.Num() - FMath::Max(0, MaxCount));
+	TArray<FFLMove> Out;
+	Out.Append(Moves.GetData() + Start, Moves.Num() - Start);
+	return Out;
+}
+
 FFLFlightState FFLMoveHistory::Replay(const FFLFlightState& ServerState, const FFLFlightParams& Params) const
 {
 	FFLFlightState S = ServerState;
@@ -44,14 +52,19 @@ void FFLMoveBudget::Accrue(double RealDt)
 	if (RealDt > 0.0)
 	{
 		Budget = FMath::Min(Budget + RealDt, MaxBurst);
+		Accrued += RealDt;
 	}
 }
 
 double FFLMoveBudget::Consume(double RequestedDt)
 {
-	const double Allowed = FMath::Max(0.0, FMath::Min3(RequestedDt, MaxStep, Budget));
-	Budget -= Allowed;
-	return Allowed;
+	if (RequestedDt <= 0.0 || RequestedDt > MaxStep || Budget - RequestedDt < -MaxDebt - 1e-12)
+	{
+		return 0.0;
+	}
+	Budget -= RequestedDt;
+	Consumed += RequestedDt;
+	return RequestedDt;
 }
 
 double FLPrediction::PositionError(const FFLFlightState& Predicted, const FFLFlightState& Server)

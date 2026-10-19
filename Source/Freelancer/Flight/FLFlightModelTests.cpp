@@ -221,6 +221,19 @@ bool FFLPredictionTest::RunTest(const FString& Parameters)
 	FFLFlightState Far = Client; Far.Position += FVector(0, 5000, 0);
 	TestTrue(TEXT("grosser Fehler: sofort uebernehmen"), FLPrediction::Smooth(Client, Far, 0.1).Position == Far.Position);
 
+	// Redundantes Senden: die letzten N offenen Bewegungen, aelteste zuerst
+	{
+		FFLMoveHistory H;
+		for (uint32 Seq = 1; Seq <= 10; ++Seq) { H.Add(FFLMove{Seq, In, 0.016f}); }
+		const TArray<FFLMove> Last = H.LastMoves(4);
+		TestEqual(TEXT("letzte 4"), Last.Num(), 4);
+		TestTrue(TEXT("aelteste zuerst, endet bei 10"), Last[0].Sequence == 7 && Last[3].Sequence == 10);
+		TestEqual(TEXT("mehr verlangt als vorhanden"), H.LastMoves(100).Num(), 10);
+		H.Acknowledge(8);
+		TestEqual(TEXT("nur offene"), H.LastMoves(8).Num(), 2);
+		TestEqual(TEXT("0 angefordert"), H.LastMoves(0).Num(), 0);
+	}
+
 	// Verlauf ist begrenzt
 	FFLMoveHistory Long;
 	for (uint32 Seq = 1; Seq <= 1000; ++Seq)
@@ -232,19 +245,46 @@ bool FFLPredictionTest::RunTest(const FString& Parameters)
 	Long.Acknowledge(5000);
 	TestEqual(TEXT("alles bestaetigt"), Long.Num(), 0);
 
-	// Zeitbudget: ein Client darf nicht mehr Bewegungszeit schicken, als auf dem Server vergangen ist
-	FFLMoveBudget Budget(0.25);
-	TestTrue(TEXT("anfangs voller Puffer"), FMath::IsNearlyEqual(Budget.Remaining(), 0.25));
-	TestTrue(TEXT("einzelne Bewegung auf MaxStep gekuerzt"), FMath::IsNearlyEqual(Budget.Consume(5.0), FFLMoveBudget::MaxStep));
-	Budget.Consume(0.1);
-	const double Left = Budget.Consume(0.1);
-	TestTrue(TEXT("Budget ist erschoepft (0.25 - 0.1 - 0.1 = 0.05)"), FMath::IsNearlyEqual(Left, 0.05, 1e-9));
-	TestEqual(TEXT("danach nichts mehr erlaubt"), Budget.Consume(0.1), 0.0);
-	Budget.Accrue(0.016);
-	TestTrue(TEXT("Echtzeit fuellt das Budget auf"), FMath::IsNearlyEqual(Budget.Consume(0.1), 0.016, 1e-9));
+	// Zeitbudget: ganz oder gar nicht, mit begrenztem Guthaben und begrenzter Schuld
+	FFLMoveBudget Budget(0.25, 0.25);
+	TestTrue(TEXT("anfangs volles Guthaben"), FMath::IsNearlyEqual(Budget.Remaining(), 0.25));
+	TestEqual(TEXT("zu lange Einzelbewegung wird abgelehnt"), Budget.Consume(5.0), 0.0);
+	TestEqual(TEXT("ungueltige Dauer wird abgelehnt"), Budget.Consume(-1.0), 0.0);
+	TestTrue(TEXT("Guthaben blieb unberuehrt"), FMath::IsNearlyEqual(Budget.Remaining(), 0.25));
+	TestEqual(TEXT("1. Bewegung voll erlaubt"), Budget.Consume(0.1), 0.1);
+	TestEqual(TEXT("2. Bewegung voll erlaubt"), Budget.Consume(0.1), 0.1);
+	TestEqual(TEXT("3. Bewegung voll erlaubt (Schuld beginnt)"), Budget.Consume(0.1), 0.1);
+	TestEqual(TEXT("4. Bewegung voll erlaubt (Schuld 0.15)"), Budget.Consume(0.1), 0.1);
+	TestEqual(TEXT("5. Bewegung erlaubt (Schuld genau 0.25)"), Budget.Consume(0.1), 0.1);
+	TestEqual(TEXT("6. Bewegung abgelehnt (mehr als 0.25 Schuld)"), Budget.Consume(0.1), 0.0);
+	Budget.Accrue(0.1);
+	TestEqual(TEXT("Echtzeit baut die Schuld ab, danach wieder erlaubt"), Budget.Consume(0.1), 0.1);
 	Budget.Accrue(100.0);
-	TestTrue(TEXT("Puffer ist nach oben begrenzt"), FMath::IsNearlyEqual(Budget.Remaining(), 0.25));
-	TestEqual(TEXT("negative Anfrage verbraucht nichts"), Budget.Consume(-1.0), 0.0);
+	TestTrue(TEXT("Guthaben ist nach oben begrenzt"), FMath::IsNearlyEqual(Budget.Remaining(), 0.25));
+
+	// Ehrlicher Client im Gleichtakt (60 Bewegungen/s) mit unregelmaessigen Server-Ticks (30 Hz): mal 2, mal 3 oder 1 Bewegung pro Tick
+	FFLMoveBudget Honest(0.25, 0.25);
+	int32 Rejected = 0;
+	for (int32 Tick = 0; Tick < 3000; ++Tick)
+	{
+		Honest.Accrue(1.0 / 30.0);
+		const int32 Moves = (Tick % 4 == 1) ? 3 : ((Tick % 4 == 2) ? 1 : 2);   // Mittel 2
+		for (int32 K = 0; K < Moves; ++K)
+		{
+			Rejected += Honest.Consume(1.0 / 60.0) <= 0.0 ? 1 : 0;
+		}
+	}
+	TestEqual(TEXT("ehrlicher Client: keine Ablehnung"), Rejected, 0);
+
+	// Ein Client, der dauerhaft 20 % schneller laeuft, wird irgendwann abgelehnt
+	FFLMoveBudget Cheater(0.25, 0.25);
+	int32 CheatRejected = 0;
+	for (int32 I = 0; I < 6000; ++I)
+	{
+		Cheater.Accrue(1.0 / 60.0);
+		CheatRejected += Cheater.Consume(1.2 / 60.0) <= 0.0 ? 1 : 0;
+	}
+	TestTrue(TEXT("Speed-Hack wird abgewiesen"), CheatRejected > 500);
 	return true;
 }
 #endif

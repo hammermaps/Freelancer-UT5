@@ -39,6 +39,9 @@ public:
 	/** Zustand nach Wiederholung aller offenen Bewegungen ab dem uebergebenen (vom Server bestaetigten) Zustand. */
 	FFLFlightState Replay(const FFLFlightState& ServerState, const FFLFlightParams& Params) const;
 
+	/** Die letzten MaxCount offenen Bewegungen (aelteste zuerst), zum redundanten Senden. */
+	TArray<FFLMove> LastMoves(int32 MaxCount) const;
+
 	int32 Num() const { return Moves.Num(); }
 	uint32 LastSequence() const { return Moves.Num() ? Moves.Last().Sequence : 0; }
 
@@ -51,27 +54,35 @@ private:
 
 /**
  * Zeitbudget auf dem Server gegen Speed-Hacks: Ein Client darf nur so viel Bewegungszeit schicken, wie auf dem Server
- * tatsaechlich vergangen ist (plus kleiner Puffer fuer Jitter). Zu lange Bewegungen werden gekuerzt.
+ * tatsaechlich vergangen ist. Das Budget waechst mit der Echtzeit (bis MaxBurst) und darf durch Jitter bis zu MaxDebt
+ * ins Minus laufen. Eine Bewegung wird ganz angewendet oder ganz abgelehnt (nie gekuerzt), damit Server und ehrlicher Client
+ * dieselbe Rechnung sehen; erst dauerhaftes Voraus-Rechnen (Manipulation) fuehrt zu Ablehnungen.
  */
 class FREELANCER_API FFLMoveBudget
 {
 public:
-	explicit FFLMoveBudget(double InMaxBurstSeconds = 0.25) : MaxBurst(InMaxBurstSeconds), Budget(InMaxBurstSeconds) {}
+	explicit FFLMoveBudget(double InMaxBurstSeconds = 0.25, double InMaxDebtSeconds = 0.25)
+		: MaxBurst(InMaxBurstSeconds), MaxDebt(InMaxDebtSeconds), Budget(InMaxBurstSeconds) {}
 
 	/** Echtzeit auf dem Server vergangen. */
 	void Accrue(double RealDt);
 
-	/** Verbraucht Zeit fuer eine Bewegung und gibt die erlaubte Dauer zurueck (<= gewuenscht, <= MaxStep, <= Budget). */
+	/** Verbraucht Zeit fuer eine Bewegung: gibt RequestedDt zurueck, wenn erlaubt, sonst 0 (abgelehnt). */
 	double Consume(double RequestedDt);
 
 	double Remaining() const { return Budget; }
+	double TotalAccrued() const { return Accrued; }
+	double TotalConsumed() const { return Consumed; }
 
-	/** Groesste Dauer einer einzelnen Bewegung (Schutz gegen riesige Einzelschritte). */
+	/** Groesste Dauer einer einzelnen Bewegung; laengere werden abgelehnt. */
 	static constexpr double MaxStep = 0.1;
 
 private:
 	double MaxBurst;
+	double MaxDebt;
 	double Budget;
+	double Accrued = 0.0;
+	double Consumed = 0.0;
 };
 
 namespace FLPrediction

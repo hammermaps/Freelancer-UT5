@@ -70,6 +70,10 @@ Software-Darstellung einer `.glb` (z. B. von `fltool cmp export`) in drei Ansich
 
 `Tools/accept_ship_load.sh [Archive-Ordner]` startet den gekochten Server (`L_ShipView`, UDP 7777) und einen Client (`-nullrhi`), wartet und vergleicht die Log-Zeile `FLShipVisual …: Modell …, N Teile, N Meshes, N Hardpoints` beider Seiten. Bestanden = Zeilen gleich, mindestens ein `Join succeeded`, keine `LogOutputDevice: Error`-Zeilen. Voraussetzung: `Engine/cook_freelancer.sh` lief mit dem aktuellen Content (das Level-Skript erzeugt `L_ShipView`; der Cook-Aufruf enthält beide Karten). Exit-Code 0 = bestanden.
 
+## accept_flight_net.sh – Abnahmetest M2 (Netzwerk-Flug)
+
+`Tools/accept_flight_net.sh [Archive-Ordner]`: gekochter Server (`L_FlightTest`) + 2 Clients (`-nullrhi`, `-FLBot`, `t.MaxFPS 60`). Bestanden = 2 Joins, 0 Fehlerzeilen, Besitzer-Schiff Rolle 2 und fremdes Schiff Rolle 1 gemeldet, maximaler Vorhersagefehler des Besitzers < 150 cm. Level mit `Tools/create_flight_test_level.py` erzeugen (alte Datei vorher verschieben). Voraussetzung: `Engine/cook_freelancer.sh` mit aktuellem Code.
+
 ## Typischer Ablauf: Schiff nach Blender
 
 ```
