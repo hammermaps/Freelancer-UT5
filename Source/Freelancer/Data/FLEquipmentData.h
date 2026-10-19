@@ -10,6 +10,8 @@
  * Ausruestung (Waffe, Antrieb, Schild, Munition, ...), vom Importer aus *_equip.ini erzeugt.
  * Gemeinsame Felder sind typisiert, alle weiteren Eintraege stehen in Properties (Schluessel klein; Wiederholungen als "key#2", "key#3").
  */
+class UFLModelData;
+
 UCLASS(BlueprintType)
 class FREELANCER_API UFLEquipmentData : public UPrimaryDataAsset
 {
@@ -40,6 +42,10 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Equipment")
 	TMap<FName, FString> Properties;
+
+	/** Importiertes Modell (nur wenn das Original eine .cmp/.3db hat und der Modell-Import lief) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Model")
+	TSoftObjectPtr<UFLModelData> Model;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Source")
 	FString SourceArchetype;

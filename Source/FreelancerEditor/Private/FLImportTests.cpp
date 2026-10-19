@@ -216,3 +216,37 @@ bool FFLMarketImportTest::RunTest(const FString& Parameters)
 	TestNull(TEXT("unbekannte Ware"), D->FindGood("nope"));
 	return true;
 }
+
+#include "Data/FLSolarData.h"
+#include "FLModelImporter.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLSolarImportTest, "Freelancer.Import.Solar",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLSolarImportTest::RunTest(const FString& Parameters)
+{
+	const char* Text =
+		"[Solar]\nnickname = planet_x_4000\ntype = PLANET\nids_name = 60203\nDA_archetype = solar\\planets\\x.sph\n"
+		"material_library = solar\\planets\\x.txm\nsolar_radius = 4000\nmass = 1000000\n"
+		"[Solar]\nnickname = dock_ring\ntype = STATION\nhit_pts = 5000\nDA_archetype = solar\\dockable\\ring.cmp\n[CollisionGroup]\nnickname = ignoriert\n";
+	const auto Recs = fl::ParseRecordsOfType(fl::IniFile::Parse(Text), "Solar");
+	TestEqual(TEXT("zwei Solars"), (int32)Recs.size(), 2);
+	if (Recs.size() != 2)
+	{
+		return false;
+	}
+	UFLSolarData* P = NewObject<UFLSolarData>(GetTransientPackage());
+	UFLImportCommandlet::FillSolarData(P, Recs[0]);
+	TestEqual(TEXT("Typ"), P->SolarType, FName("PLANET"));
+	TestEqual(TEXT("Radius in cm"), P->Radius, 400000.f);
+	TestEqual(TEXT("Archetyp mit Schraegstrichen"), P->SourceArchetype, FString(TEXT("solar/planets/x.sph")));
+	TestFalse(TEXT("Planet (.sph) ist kein importierbares Modell"), FFLModelImporter::IsImportableModelPath(P->SourceArchetype));
+	UFLSolarData* S = NewObject<UFLSolarData>(GetTransientPackage());
+	UFLImportCommandlet::FillSolarData(S, Recs[1]);
+	TestEqual(TEXT("Trefferpunkte"), S->HitPoints, 5000);
+	TestTrue(TEXT("Station (.cmp) ist importierbar"), FFLModelImporter::IsImportableModelPath(S->SourceArchetype));
+	TestTrue(TEXT(".3db importierbar"), FFLModelImporter::IsImportableModelPath(TEXT("a/b.3DB")));
+	TestFalse(TEXT("leerer Pfad"), FFLModelImporter::IsImportableModelPath(FString()));
+	TestEqual(TEXT("Asset-Name bereinigt"), FFLModelImporter::SanitizeName(TEXT("a-b c.d")), FString(TEXT("a_b_c_d")));
+	return true;
+}

@@ -12,6 +12,8 @@ class UFLEquipmentData;
 class UFLGoodData;
 class UFLSystemData;
 class UFLMarketData;
+class UFLSolarData;
+class FFLModelImporter;
 namespace fl { struct FlBaseMarket; }
 namespace fl { struct FlShipRecord; struct FlRecord; }
 
@@ -32,6 +34,9 @@ public:
 	static void FillShipData(UFLShipData* Data, const fl::FlShipRecord& Record);
 
 	static void FillEquipmentData(UFLEquipmentData* Data, const fl::FlRecord& Record);
+	/** Fuellt ein Solar-Archetyp-Asset aus einem [Solar]-Eintrag der solararch.ini. */
+	static void FillSolarData(UFLSolarData* Data, const fl::FlRecord& Record);
+
 	static void FillGoodData(UFLGoodData* Data, const fl::FlRecord& Record);
 
 	/** Fuellt ein System aus dem [system]-Eintrag der universe.ini und den Records der System-INI (Objekte, Zonen, Info). */
@@ -45,8 +50,9 @@ public:
 	static void FillProperties(TMap<FName, FString>& Out, const fl::FlRecord& Record);
 
 private:
-	int32 ImportShips(const FString& DataDir, const FString& ModelFilter);
-	int32 ImportEquipment(const FString& DataDir);
+	int32 ImportShips(const FString& DataDir, const FString& ModelFilter, FFLModelImporter& Models);
+	int32 ImportSolars(const FString& DataDir, bool bWithModels, FFLModelImporter& Models);
+	int32 ImportEquipment(const FString& DataDir, bool bWithModels, FFLModelImporter& Models);
 	int32 ImportGoods(const FString& DataDir);
 	int32 ImportUniverse(const FString& DataDir);
 	int32 ImportMarkets(const FString& DataDir);

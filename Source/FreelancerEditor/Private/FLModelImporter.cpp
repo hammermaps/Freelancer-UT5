@@ -282,8 +282,22 @@ UStaticMesh* FFLModelImporter::BuildStaticMesh(const FString& Name, const fl::Vm
 	return SM;
 }
 
+bool FFLModelImporter::IsImportableModelPath(const FString& Path)
+{
+	return Path.EndsWith(TEXT(".cmp"), ESearchCase::IgnoreCase) || Path.EndsWith(TEXT(".3db"), ESearchCase::IgnoreCase);
+}
+
 UFLModelData* FFLModelImporter::ImportModel(const FString& AssetName, const FString& ArchetypePath, const TArray<FString>& MaterialLibraries)
 {
+	if (!IsImportableModelPath(ArchetypePath))
+	{
+		return nullptr;
+	}
+	const FString CacheKey = ArchetypePath.Replace(TEXT("\\"), TEXT("/")).ToLower();
+	if (UFLModelData** Cached = ModelCache.Find(CacheKey))
+	{
+		return *Cached;
+	}
 	const FString Path = ResolvePath(ArchetypePath);
 	if (Path.IsEmpty())
 	{
@@ -352,5 +366,6 @@ UFLModelData* FFLModelImporter::ImportModel(const FString& AssetName, const FStr
 	}
 	Data->MarkPackageDirty();
 	SaveAsset(Data);
+	ModelCache.Add(CacheKey, Data);
 	return Data;
 }

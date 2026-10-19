@@ -8,6 +8,7 @@
 #include "Data/FLMarketData.h"
 #include "Data/FLModelData.h"
 #include "Data/FLShipData.h"
+#include "Data/FLSolarData.h"
 #include "Data/FLSystemData.h"
 #include "FlMarket.h"
 #include "FlMath.h"
@@ -92,9 +93,8 @@ fl::IniFile LoadIni(const FString& Path)
 }
 }
 
-int32 UFLImportCommandlet::ImportShips(const FString& DataDir, const FString& ModelFilter)
+int32 UFLImportCommandlet::ImportShips(const FString& DataDir, const FString& ModelFilter, FFLModelImporter& ModelImporter)
 {
-	FFLModelImporter ModelImporter(DataDir);
 	const FString IniPath = FPaths::Combine(DataDir, TEXT("SHIPS"), TEXT("shiparch.ini"));
 	fl::IniFile Ini = fl::IniFile::Load(TCHAR_TO_UTF8(*IniPath));
 	if (!Ini.bOk)
@@ -173,7 +173,7 @@ void UFLImportCommandlet::FillGoodData(UFLGoodData* Data, const fl::FlRecord& R)
 	FillProperties(Data->Properties, R);
 }
 
-int32 UFLImportCommandlet::ImportEquipment(const FString& DataDir)
+int32 UFLImportCommandlet::ImportEquipment(const FString& DataDir, bool bWithModels, FFLModelImporter& Models)
 {
 	TArray<FString> Files;
 	IFileManager::Get().FindFiles(Files, *FPaths::Combine(DataDir, TEXT("EQUIPMENT"), TEXT("*_equip.ini")), true, false);
@@ -197,7 +197,15 @@ int32 UFLImportCommandlet::ImportEquipment(const FString& DataDir)
 				Name += FString::Printf(TEXT("_%s"), UTF8_TO_TCHAR(R.Section.c_str())); // gleicher Nickname in anderem Sektionstyp
 			}
 			Names.Add(Name.ToLower());
-			if (!CreateAndSave<UFLEquipmentData>(TEXT("/Game/Imported/Equipment/") + Name, Name, [&R](UFLEquipmentData* D) { FillEquipmentData(D, R); }))
+			if (!CreateAndSave<UFLEquipmentData>(TEXT("/Game/Imported/Equipment/") + Name, Name, [&R, &Models, bWithModels](UFLEquipmentData* D)
+			{
+				FillEquipmentData(D, R);
+				if (bWithModels && FFLModelImporter::IsImportableModelPath(D->SourceArchetype))
+				{
+					const FString Stem = FPaths::GetBaseFilename(D->SourceArchetype);
+					if (UFLModelData* M = Models.ImportModel(TEXT("equip_") + Stem, D->SourceArchetype, D->SourceMaterialLibraries)) { D->Model = M; }
+				}
+			}))
 			{
 				return -1;
 			}
@@ -469,6 +477,64 @@ int32 UFLImportCommandlet::ImportMarkets(const FString& DataDir)
 	return Count;
 }
 
+void UFLImportCommandlet::FillSolarData(UFLSolarData* Data, const fl::FlRecord& R)
+{
+	auto Num = [&R](const char* Key) { const std::string* V = R.Find(Key); return V ? FCString::Atof(UTF8_TO_TCHAR(V->c_str())) : 0.f; };
+	Data->Nickname = FName(UTF8_TO_TCHAR(R.Nickname.c_str()));
+	const std::string* Type = R.Find("type");
+	Data->SolarType = FName(Type ? UTF8_TO_TCHAR(Type->c_str()) : TEXT(""));
+	Data->IdsName = (int32)Num("ids_name");
+	Data->IdsInfo = (int32)Num("ids_info");
+	Data->Mass = Num("mass");
+	Data->HitPoints = (int32)Num("hit_pts");
+	Data->Radius = Num("solar_radius") * 100.f; // Meter -> cm
+	const std::string* Arch = R.Find("da_archetype");
+	Data->SourceArchetype = Arch ? UTF8_TO_TCHAR(fl::NormalizePath(*Arch).c_str()) : TEXT("");
+	Data->SourceMaterialLibraries.Reset();
+	for (const std::string& M : R.FindAll("material_library"))
+	{
+		Data->SourceMaterialLibraries.Add(UTF8_TO_TCHAR(fl::NormalizePath(M).c_str()));
+	}
+	FillProperties(Data->Properties, R);
+}
+
+int32 UFLImportCommandlet::ImportSolars(const FString& DataDir, bool bWithModels, FFLModelImporter& Models)
+{
+	const FString Path = Models.ResolvePath(TEXT("SOLAR/solararch.ini"));
+	fl::IniFile Ini = LoadIni(Path);
+	if (!Ini.bOk)
+	{
+		UE_LOG(LogFLImport, Error, TEXT("solararch.ini: %s"), UTF8_TO_TCHAR(Ini.Error.c_str()));
+		return -1;
+	}
+	int32 Count = 0;
+	TSet<FString> Names;
+	for (const fl::FlRecord& R : fl::ParseRecordsOfType(Ini, "Solar"))
+	{
+		const FString Name = TEXT("DA_Solar_") + FFLModelImporter::SanitizeName(UTF8_TO_TCHAR(R.Nickname.c_str()));
+		if (Names.Contains(Name.ToLower()))
+		{
+			continue;
+		}
+		Names.Add(Name.ToLower());
+		if (!CreateAndSave<UFLSolarData>(TEXT("/Game/Imported/Solars/") + Name, Name, [&R, &Models, bWithModels](UFLSolarData* D)
+			{
+				FillSolarData(D, R);
+				if (bWithModels && FFLModelImporter::IsImportableModelPath(D->SourceArchetype))
+				{
+					const FString Stem = FPaths::GetBaseFilename(D->SourceArchetype);
+					if (UFLModelData* M = Models.ImportModel(TEXT("solar_") + Stem, D->SourceArchetype, D->SourceMaterialLibraries)) { D->Model = M; }
+				}
+			}))
+		{
+			return -1;
+		}
+		++Count;
+	}
+	UE_LOG(LogFLImport, Display, TEXT("%d Solar-Archetypen importiert"), Count);
+	return Count;
+}
+
 int32 UFLImportCommandlet::Main(const FString& Params)
 {
 	FString DataDir;
@@ -479,7 +545,10 @@ int32 UFLImportCommandlet::Main(const FString& Params)
 	}
 	FString ModelFilter;
 	FParse::Value(*Params, TEXT("-models="), ModelFilter); // "all" oder Schiff-Nickname
-	if (ImportShips(DataDir, ModelFilter) < 0 || ImportUniverse(DataDir) < 0 || ImportMarkets(DataDir) < 0 || ImportEquipment(DataDir) < 0 || ImportGoods(DataDir) < 0)
+	const bool bAllModels = ModelFilter == TEXT("all");
+	FFLModelImporter Models(DataDir); // gemeinsamer Importer: Texturen, Materialien und Modelle werden zwischengespeichert
+	if (ImportShips(DataDir, ModelFilter, Models) < 0 || ImportUniverse(DataDir) < 0 || ImportMarkets(DataDir) < 0
+		|| ImportSolars(DataDir, bAllModels, Models) < 0 || ImportEquipment(DataDir, bAllModels, Models) < 0 || ImportGoods(DataDir) < 0)
 	{
 		return 2;
 	}

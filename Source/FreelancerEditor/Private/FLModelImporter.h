@@ -22,6 +22,9 @@ public:
 	/** Importiert Modell + Materialien; liefert das Modell-Asset oder nullptr. AssetName ohne Praefix. */
 	UFLModelData* ImportModel(const FString& AssetName, const FString& ArchetypePath, const TArray<FString>& MaterialLibraries);
 
+	/** Nur .cmp und .3db sind importierbar (Planeten .sph u. a. nicht). */
+	static bool IsImportableModelPath(const FString& Path);
+
 	/** Sauberer Name fuer Assets (nur A-Z a-z 0-9 _) */
 	static FString SanitizeName(const FString& In);
 
@@ -32,6 +35,7 @@ private:
 	FString DataDir;
 	TMap<uint32, UMaterialInterface*> MaterialCache; // CRC -> Material-Instanz
 	TMap<FString, UTexture2D*> TextureCache;
+	TMap<FString, UFLModelData*> ModelCache; // Archetyp-Pfad (klein) -> Modell, mehrere Objekte teilen ein Modell
 
 	void LoadMaterialLibrary(const FString& RelativePath);
 	UTexture2D* ImportTexture(const FString& Name, const fl::FlImage& Image);
