@@ -113,8 +113,8 @@ Hilfswerkzeuge (`fltool`, `tex_to_png.py`, Testlevel-Skript) sind in **[Tools.md
 - Editor-Target bauen: `make FreelancerEditor` (Makefile liegt im Projekt) oder über VS Code (`Freelancer.code-workspace`).
 - Nach Änderungen an `.h`/`.cpp`: neu bauen; bei neuen Dateien Projektdateien neu generieren.
 - Engine: `~/Linux_Unreal_Engine_5.8.3` (Installed Build). Build direkt: `~/Linux_Unreal_Engine_5.8.3/Engine/Build/BatchFiles/Linux/Build.sh FreelancerEditor Linux Development -Project="<Pfad>/Freelancer.uproject" -WaitMutex`.
-- Stand 18.10.2026: `FreelancerEditor` baut. **`FreelancerServer`/`FreelancerClient` lassen sich mit dieser Engine nicht bauen** („Server targets are not currently supported from this engine distribution"); dafür ist eine aus dem Quellcode gebaute UE 5.8 nötig (siehe `PLAN.md`, M0). Bis dahin: Spiel-Instanz mit `UnrealEditor Freelancer.uproject <Map> -server -game -log` testen.
-- Git: Repo `main` angelegt, `git-lfs` noch zu installieren (`sudo apt install git-lfs && git lfs install`).
+- Stand 19.10.2026: **Source-Engine 5.8.3 gebaut** (`Engine/UnrealEngine`, Skript `Engine/build_engine.sh`, Log `Engine/build.log`, mit `-NoUBA`, weil UBA mit dem ausgelagerten `Intermediate`-Symlink scheitert). `FreelancerEditor`, `FreelancerServer` und `FreelancerClient` bauen mit dieser Engine (Linux, Development). Binärdateien liegen lokal in `~/UEBuild/Freelancer/Binaries/Linux/`. Bauen: `Engine/UnrealEngine/Engine/Build/BatchFiles/Linux/Build.sh FreelancerServer Linux Development -Project=<Pfad>/Freelancer.uproject -WaitMutex -NoUBA`. Server/Client laufen erst mit gekochtem Content (Cook noch nicht eingerichtet).
+- Git: Repo `main`, `git-lfs` installiert, Remote GitHub (Zugangsdaten nur lokal in `~/.git-credentials-freelancer`).
 
 ## Konventionen
 
