@@ -160,6 +160,7 @@ Jeder Meilenstein endet **mit mehreren verbundenen Clients**, nicht mit einem lo
 - Stand: UTF-Reader, INI-Parser (1252 von 1252 Original-INIs fehlerfrei) Textur-Export und Mesh-Export (VMesh nach glTF/GLB, 1478 von 1478), Compound-Export mit Teilehierarchie, Konstrukten und Hardpoints (511 von 511 `.cmp`) fertig; Details in `Tools.md`, mit Tests (`ctest`, `unittest`); UTF: 400 von 400 Testdateien aus `GameData/FL/DATA` fehlerfrei gelesen.
 
 ### M2 – Netzwerk-Flug (Wochen 4–8)
+**Status M2 (20.10.2026):** Flugmodell `FLFlight::Step` (Source/Freelancer/Flight/FLFlightModel.*) fertig: reine, deterministische Schrittfunktion mit exakter Lösung der gedämpften Bewegung (Endgeschwindigkeit = Schub / Widerstand: Liberty-Fighter 48000 N / 600 = 80 m/s wie im Original; Drehung = Drehmoment / Winkelwiderstand), Eingabe-Begrenzung (`Clamped`, Server-Validierung), `MakeParams` aus importierten Schiffs- und Triebwerksdaten. Automation Tests `Freelancer.Flight.*` (3) grün: Endwerte, Rückwärtsflug, Bremsen, Schrittweiten-Unabhängigkeit, Determinismus, Achsenrichtungen, Parameter-Mapping. Offen: `UFLShipMovementComponent` (Anwendung auf den Actor), `AFLShip`, Replikation, Client-Vorhersage + Abgleich, Cruise-Antrieb, Kamera/Eingabe (Enhanced Input).
 - `AFLShip` + `UFLShipMovementComponent` mit Enhanced Input: Maussteuerung (Cursor-Offset), Schub, Strafe, Reverse, Cruise Engine.
 - Replikation, Client-Prediction und Server-Reconciliation; Interpolation für fremde Schiffe.
 - Kamera (Chase, Cockpit optional), HUD-Grundlagen.

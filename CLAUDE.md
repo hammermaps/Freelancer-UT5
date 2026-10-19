@@ -155,6 +155,10 @@ Jedes neue UE-Modul braucht **alles** davon, sonst bricht Build oder Start:
 
 **Import ausführen:** `UnrealEditor-Cmd Freelancer.uproject -run=FLImport -source=<GameData/FL/DATA> -unattended -nullrhi -nosplash` (schreibt nach `Content/Imported/`, ist nicht im Repo).
 
+## Flugmodell (M2)
+
+`Source/Freelancer/Flight/FLFlightModel.h`: `FLFlight::Step(State, Input, Params, Dt)` ist die einzige Stelle, die Bewegung berechnet – Server und Client rufen **dieselbe** Funktion (deterministisch, schrittweitenunabhängig). Einheiten: cm, cm/s, N, kg, rad/s. Achsen: x = Pitch/Roll-Reihenfolge wie im Original bei Drehmomenten (`x = Pitch, y = Yaw, z = Roll`). Eingaben immer mit `Clamped()` begrenzen (Server-Validierung). Parameter via `MakeParams(Ship, Engine)` (Gesamtwiderstand = Schiffs- + Triebwerks-`linear_drag`). Tests: `Automation RunTests Freelancer.Flight`.
+
 ## Konventionen
 
 - C++-Klassen mit Präfix **`FL`** (z. B. `AFLShip`, `UFLShipData`); Ordner nach Thema: `Flight/`, `Combat/`, `World/`, `Economy/`, `Missions/`, `UI/`, `Data/`.
