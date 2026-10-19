@@ -11,6 +11,8 @@ class UFLShipData;
 class UFLEquipmentData;
 class UFLGoodData;
 class UFLSystemData;
+class UFLMarketData;
+namespace fl { struct FlBaseMarket; }
 namespace fl { struct FlShipRecord; struct FlRecord; }
 
 /**
@@ -36,6 +38,9 @@ public:
 	static void FillSystemData(UFLSystemData* Data, const fl::FlRecord& UniverseEntry, const std::vector<fl::FlRecord>& Objects,
 		const std::vector<fl::FlRecord>& Zones, const fl::FlRecord* Info, const TArray<FName>& Bases);
 
+	/** Fuegt die Waren eines Marktes (Kommodity/Ausruestung/Schiff) dem Marktasset hinzu. */
+	static void AddMarketGoods(UFLMarketData* Data, const fl::FlBaseMarket& Market, uint8 Kind);
+
 	/** Properties -> TMap: Schluessel klein, Wiederholungen als "key#2", "key#3". */
 	static void FillProperties(TMap<FName, FString>& Out, const fl::FlRecord& Record);
 
@@ -44,4 +49,5 @@ private:
 	int32 ImportEquipment(const FString& DataDir);
 	int32 ImportGoods(const FString& DataDir);
 	int32 ImportUniverse(const FString& DataDir);
+	int32 ImportMarkets(const FString& DataDir);
 };

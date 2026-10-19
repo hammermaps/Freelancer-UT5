@@ -5,9 +5,11 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Data/FLEquipmentData.h"
 #include "Data/FLGoodData.h"
+#include "Data/FLMarketData.h"
 #include "Data/FLModelData.h"
 #include "Data/FLShipData.h"
 #include "Data/FLSystemData.h"
+#include "FlMarket.h"
 #include "FlMath.h"
 #include "FlModel.h"
 #include "FLModelImporter.h"
@@ -411,6 +413,62 @@ int32 UFLImportCommandlet::ImportUniverse(const FString& DataDir)
 	return Count;
 }
 
+void UFLImportCommandlet::AddMarketGoods(UFLMarketData* Data, const fl::FlBaseMarket& M, uint8 Kind)
+{
+	Data->Base = FName(UTF8_TO_TCHAR(M.Base.c_str()));
+	for (const fl::FlMarketGood& G : M.Goods)
+	{
+		FFLMarketGood Out;
+		Out.Good = FName(UTF8_TO_TCHAR(G.Good.c_str()));
+		Out.Kind = (EFLMarketKind)Kind;
+		Out.Rank = G.Rank;
+		Out.Reputation = G.Rep;
+		Out.Min = G.Min;
+		Out.Max = G.Max;
+		Out.bPreserve = G.bPreserve;
+		Out.PriceMultiplier = G.Multiplier;
+		Data->Goods.Add(Out);
+	}
+}
+
+int32 UFLImportCommandlet::ImportMarkets(const FString& DataDir)
+{
+	// Reihenfolge = Art der Ware: Rohstoffe, Ausruestung, Schiffe (jeweils eine Datei, ein [BaseGood] je Basis)
+	const TCHAR* Files[] = {TEXT("market_commodities.ini"), TEXT("market_misc.ini"), TEXT("market_ships.ini")};
+	TMap<FString, TArray<TPair<uint8, fl::FlBaseMarket>>> ByBase;
+	for (int32 K = 0; K < 3; ++K)
+	{
+		const FString Path = FPaths::Combine(DataDir, TEXT("EQUIPMENT"), Files[K]);
+		fl::IniFile Ini = LoadIni(Path);
+		if (!Ini.bOk)
+		{
+			UE_LOG(LogFLImport, Error, TEXT("%s: %s"), *Path, UTF8_TO_TCHAR(Ini.Error.c_str()));
+			return -1;
+		}
+		for (fl::FlBaseMarket& M : fl::ParseMarkets(Ini))
+		{
+			ByBase.FindOrAdd(FString(UTF8_TO_TCHAR(M.Base.c_str())).ToLower()).Emplace((uint8)K, MoveTemp(M));
+		}
+	}
+	int32 Count = 0;
+	for (const auto& Pair : ByBase)
+	{
+		const FString BaseName = UTF8_TO_TCHAR(Pair.Value[0].Value.Base.c_str());
+		const FString Name = TEXT("DA_Market_") + FFLModelImporter::SanitizeName(BaseName);
+		if (!CreateAndSave<UFLMarketData>(TEXT("/Game/Imported/Markets/") + Name, Name, [&Pair](UFLMarketData* D)
+			{
+				D->Goods.Reset();
+				for (const auto& Part : Pair.Value) { AddMarketGoods(D, Part.Value, Part.Key); }
+			}))
+		{
+			return -1;
+		}
+		++Count;
+	}
+	UE_LOG(LogFLImport, Display, TEXT("%d Maerkte importiert"), Count);
+	return Count;
+}
+
 int32 UFLImportCommandlet::Main(const FString& Params)
 {
 	FString DataDir;
@@ -421,7 +479,7 @@ int32 UFLImportCommandlet::Main(const FString& Params)
 	}
 	FString ModelFilter;
 	FParse::Value(*Params, TEXT("-models="), ModelFilter); // "all" oder Schiff-Nickname
-	if (ImportShips(DataDir, ModelFilter) < 0 || ImportUniverse(DataDir) < 0 || ImportEquipment(DataDir) < 0 || ImportGoods(DataDir) < 0)
+	if (ImportShips(DataDir, ModelFilter) < 0 || ImportUniverse(DataDir) < 0 || ImportMarkets(DataDir) < 0 || ImportEquipment(DataDir) < 0 || ImportGoods(DataDir) < 0)
 	{
 		return 2;
 	}

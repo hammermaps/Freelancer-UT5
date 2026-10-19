@@ -181,3 +181,38 @@ bool FFLSystemImportTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("unbekanntes Objekt"), bFound);
 	return true;
 }
+
+#include "Data/FLMarketData.h"
+#include "FlMarket.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLMarketImportTest, "Freelancer.Import.Market",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLMarketImportTest::RunTest(const FString& Parameters)
+{
+	const char* Text =
+		"[BaseGood]\nbase = Br01_01_base\nMarketGood = commodity_gold, 0, -1, 150, 500, 0, 1.08\nMarketGood = short, 1, 2\n"
+		"[BaseGood]\nMarketGood = ohne_base, 0, 0, 0, 0, 0, 1\n";
+	const auto Markets = fl::ParseMarkets(fl::IniFile::Parse(Text));
+	TestEqual(TEXT("nur Sektion mit base"), (int32)Markets.size(), 1);
+	if (Markets.size() != 1)
+	{
+		return false;
+	}
+	TestEqual(TEXT("zu kurze Zeile wird uebersprungen"), (int32)Markets[0].Goods.size(), 1);
+	UFLMarketData* D = NewObject<UFLMarketData>(GetTransientPackage());
+	UFLImportCommandlet::AddMarketGoods(D, Markets[0], (uint8)EFLMarketKind::Commodity);
+	TestEqual(TEXT("Basis"), D->Base, FName("Br01_01_base"));
+	const FFLMarketGood* G = D->FindGood("commodity_gold");
+	TestNotNull(TEXT("Ware gefunden"), G);
+	if (G)
+	{
+		TestEqual(TEXT("Art"), G->Kind, EFLMarketKind::Commodity);
+		TestEqual(TEXT("Ruf"), G->Reputation, -1.f);
+		TestEqual(TEXT("Max"), G->Max, 500);
+		TestFalse(TEXT("preserve"), G->bPreserve);
+		TestEqual(TEXT("Faktor"), G->PriceMultiplier, 1.08f);
+	}
+	TestNull(TEXT("unbekannte Ware"), D->FindGood("nope"));
+	return true;
+}

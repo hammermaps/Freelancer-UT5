@@ -1,6 +1,7 @@
 // Tests fuer flformats. Nur synthetische Daten, keine Originaldateien.
 #include "FlIni.h"
 #include "FlImage.h"
+#include "FlMarket.h"
 #include "FlMath.h"
 #include "FlModel.h"
 #include "FlRecords.h"
@@ -576,6 +577,22 @@ static void TestEmptyPartHasNoMesh()
 	CHECK(M.Parts.size() == 1 && !M.Parts[0].bHasMesh);
 }
 
+static void TestMarkets()
+{
+	const char* Text =
+		"[BaseGood]\nbase = Br01_01_base\nMarketGood = commodity_gold, 0, -1, 150, 500, 0, 1.080000\n"
+		"marketgood = gf1_package, 4, 0.5, 0, 0, 1, 1, 1\nMarketGood = kurz, 1, 2, 3\n"
+		"[BaseGood]\nMarketGood = x, 0, 0, 0, 0, 0, 1\n[BaseGood]\nbase = leer\n";
+	auto M = ParseMarkets(IniFile::Parse(Text));
+	CHECK(M.size() == 2);                                 // Sektion ohne base faellt weg
+	CHECK(M[0].Base == "Br01_01_base" && M[0].Goods.size() == 2);   // zu kurze Zeile uebersprungen
+	CHECK(M[0].Goods[0].Good == "commodity_gold" && M[0].Goods[0].Rep == -1.0f && M[0].Goods[0].Max == 500 && !M[0].Goods[0].bPreserve);
+	CHECK(M[0].Goods[0].Multiplier == 1.08f);
+	CHECK(M[0].Goods[1].Rank == 4 && M[0].Goods[1].Rep == 0.5f && M[0].Goods[1].bPreserve);   // achter Wert wird ignoriert
+	CHECK(M[1].Base == "leer" && M[1].Goods.empty());
+	CHECK(ParseMarkets(IniFile::Parse("")).empty());
+}
+
 int main()
 {
 	TestUtf();
@@ -589,6 +606,7 @@ int main()
 	TestImage();
 	TestBuildModel();
 	TestMath();
+	TestMarkets();
 	TestEmptyPartHasNoMesh();
 	std::printf(Failures ? "%d Fehler\n" : "alle Tests bestanden\n", Failures);
 	return Failures ? 1 : 0;
