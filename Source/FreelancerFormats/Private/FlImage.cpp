@@ -1,4 +1,4 @@
-#include "Image.h"
+#include "FlImage.h"
 #include <cstring>
 
 namespace fl

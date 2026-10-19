@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Die Formatbibliothek liegt als UE-Modul im Projekt und wird hier mitgebaut (eine Quelle fuer fltool und FLImport).
 set(FORMATS ${CMAKE_CURRENT_SOURCE_DIR}/../../Source/FreelancerFormats)
 add_library(flformats STATIC
-	${FORMATS}/Private/Utf.cpp ${FORMATS}/Private/Ini.cpp ${FORMATS}/Private/Vms.cpp
-	${FORMATS}/Private/Model.cpp ${FORMATS}/Private/ShipData.cpp ${FORMATS}/Private/Records.cpp ${FORMATS}/Private/Image.cpp)
+	${FORMATS}/Private/FlUtf.cpp ${FORMATS}/Private/FlIni.cpp ${FORMATS}/Private/FlVms.cpp
+	${FORMATS}/Private/FlModel.cpp ${FORMATS}/Private/FlShipData.cpp ${FORMATS}/Private/FlRecords.cpp ${FORMATS}/Private/FlImage.cpp)
 target_include_directories(flformats PUBLIC ${FORMATS}/Public PRIVATE ${FORMATS}/Private)
 
 add_executable(fltool src/main.cpp)

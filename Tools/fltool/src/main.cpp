@@ -7,11 +7,11 @@
 //   fltool model info <datei>                Materialien (CRC, Typ, Textur) und Hardpoints
 //   fltool tex decode <bild.dds|tga> <out.pam>  Bild decodieren (RGBA, PAM-Format)
 //   fltool tex decode <bild> <out.pam>\n  fltool tex extract <datei> <zielordner>  je Textur die groesste MIP-Stufe als .dds/.tga schreiben
-#include "Image.h"
-#include "Ini.h"
-#include "Model.h"
-#include "Utf.h"
-#include "Vms.h"
+#include "FlImage.h"
+#include "FlIni.h"
+#include "FlModel.h"
+#include "FlUtf.h"
+#include "FlVms.h"
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -111,60 +111,29 @@ static int ModelInfo(const UtfNode& Root)
 	return 0;
 }
 
-// Exportiert ein .cmp als Szene: ein Knoten je Teil (Konstrukt-Transform), Hardpoints als leere Kindknoten.
+// Exportiert ein .cmp/.3db als Szene: ein Knoten je Teil (Konstrukt-Transform), Hardpoints als leere Kindknoten.
 static int ExportCmp(const UtfNode& Root, const std::string& OutPath, const std::string& MatPath)
 {
-	const UtfNode* Lib = FindChild(Root, "VMeshLibrary");
-	std::map<uint32_t, VmsMesh> Meshes;
-	if (Lib)
-		for (auto& E : Lib->Children)
-		{
-			const UtfNode* D = FindChild(*E, "VMeshData");
-			VmsMesh M; std::string Err;
-			if (D && ParseVms(D->Data, M, Err)) Meshes[FlModelCrc(E->Name)] = std::move(M);
-		}
-	auto Parts = ReadParts(Root);
-	auto Cons = ReadConstructs(Root);
-	if (Parts.empty()) { std::fprintf(stderr, "keine Teile (kein Compound-Modell)\n"); return 1; }
+	FlModel Model; std::string Err;
+	if (!BuildModel(Root, Model, Err)) { std::fprintf(stderr, "%s\n", Err.c_str()); return 1; }
 	std::vector<SceneNode> Scene;
-	std::map<std::string, int> ByObject;
-	for (auto& P : Parts)
+	for (auto& P : Model.Parts)
 	{
-		SceneNode N; N.Name = P.Object;
-		if (const UtfNode* Model = FindChild(Root, P.File))
-		{
-			FlMeshRef Ref;
-			if (ReadLevel0Ref(*Model, Ref))
-			{
-				auto It = Meshes.find(Ref.MeshCrc);
-				if (It != Meshes.end()) { N.bHasMesh = true; N.Mesh = ExtractGroups(It->second, Ref.StartMesh, Ref.MeshCount); }
-			}
-		}
-		ByObject[Lower(P.Object)] = (int)Scene.size();
+		SceneNode N; N.Name = P.Name; N.Parent = P.Parent;
+		std::memcpy(N.T, P.Position, 12);
+		RotationToQuat(P.Rotation, N.Q);
+		N.bHasMesh = P.bHasMesh; N.Mesh = P.Mesh;
 		Scene.push_back(std::move(N));
-	}
-	for (auto& C : Cons)
-	{
-		auto Ch = ByObject.find(Lower(C.Child)), Pa = ByObject.find(Lower(C.Parent));
-		if (Ch == ByObject.end()) continue;
-		SceneNode& N = Scene[Ch->second];
-		if (Pa != ByObject.end() && Pa->second != Ch->second) N.Parent = Pa->second;
-		std::memcpy(N.T, C.Origin, 12);
-		RotationToQuat(C.Rotation, N.Q);
 	}
 	size_t PartCount = Scene.size();
 	for (size_t i = 0; i < PartCount; ++i)
-	{
-		const UtfNode* Model = FindChild(Root, Parts[i].File);
-		if (!Model) continue;
-		for (auto& H : ReadHardpoints(*Model))
+		for (auto& H : Model.Parts[i].Hardpoints)
 		{
 			SceneNode N; N.Name = "HP_" + H.Name; N.Parent = (int)i;
 			std::memcpy(N.T, H.Position, 12);
 			RotationToQuat(H.Orientation, N.Q);
 			Scene.push_back(std::move(N));
 		}
-	}
 	std::map<uint32_t, GlbMaterial> Mats;
 	if (!MatPath.empty())
 	{

@@ -1,7 +1,8 @@
 // Materialien, Hardpoints und CRC-Hashes aus Freelancer-Modelldateien.
 #pragma once
 #include "FlApi.h"
-#include "Utf.h"
+#include "FlUtf.h"
+#include "FlVms.h"
 #include <cstdint>
 #include <map>
 #include <string>
@@ -73,4 +74,34 @@ struct FlTexture
 };
 // "Texture library"/<name>/{MIPS | MIP0..n}: je Textur die groesste Stufe.
 FLF_API std::vector<FlTexture> ReadTextures(const UtfNode& Root);
+
+// ---- Gesamtmodell (Compound .cmp oder einzelnes .3db) ----
+
+struct FlModelPart
+{
+	std::string Name;
+	int Parent = -1;               // Index in FlModel::Parts, -1 = Wurzel
+	float Position[3] = {0, 0, 0}; // lokal, Originalkoordinaten
+	float Rotation[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1}; // 3x3 zeilenweise
+	bool bHasMesh = false;
+	VmsMesh Mesh;                  // LOD0, Gruppen nach Material
+	std::vector<FlHardpoint> Hardpoints;
+	FlConstruct::EKind Joint = FlConstruct::Fix;
+	float Axis[3] = {0, 0, 0};     // Rev/Pris
+	float Min = 0, Max = 0;
+};
+
+struct FlModel
+{
+	std::vector<FlModelPart> Parts;
+};
+
+// Baut aus einem .cmp (Teile + Konstrukte) oder .3db (ein Teil) das Gesamtmodell. Fehler -> false + Error.
+FLF_API bool BuildModel(const UtfNode& Root, FlModel& Out, std::string& Error);
+
+// Koordinaten Original (x rechts, y oben, z hinten; Meter) -> Unreal (x vorn, y rechts, z oben; Zentimeter).
+// Die Abbildung (x,y,z) -> (-z, x, y) spiegelt die Handedness; Dreiecke muessen umgedreht werden.
+FLF_API void FlToUePosition(const float In[3], float Out[3]);
+FLF_API void FlToUeDirection(const float In[3], float Out[3]);   // ohne Skalierung (Normalen, Achsen)
+FLF_API void FlToUeRotation(const float In[9], float Out[9]);    // M * R * M^T
 }

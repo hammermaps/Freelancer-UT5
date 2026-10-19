@@ -1,11 +1,11 @@
 // Tests fuer flformats. Nur synthetische Daten, keine Originaldateien.
-#include "Ini.h"
-#include "Image.h"
-#include "Model.h"
-#include "Records.h"
-#include "ShipData.h"
-#include "Utf.h"
-#include "Vms.h"
+#include "FlIni.h"
+#include "FlImage.h"
+#include "FlModel.h"
+#include "FlRecords.h"
+#include "FlShipData.h"
+#include "FlUtf.h"
+#include "FlVms.h"
 #include <cstdio>
 #include <cmath>
 #include <cstring>
@@ -397,6 +397,80 @@ static void TestImage()
 	CHECK(DecodeImage(Tga(3, 1, 1, 8, 0, {9}), I, E) && I.Rgba[0] == 9);
 }
 
+static void TestBuildModel()
+{
+	// Compound mit einem Teil "Wing", Mesh-Bibliothek "m.vms", Konstrukt Root -> Wing
+	auto Root = Dir("/");
+	auto Lib = Dir("VMeshLibrary");
+	auto Entry = Dir("m.vms");
+	auto Vms = MakeVms();
+	Entry->Children.push_back(Leaf("VMeshData", Vms.data(), Vms.size()));
+	Lib->Children.push_back(std::move(Entry));
+	Root->Children.push_back(std::move(Lib));
+
+	auto Model = Dir("wing.3db");
+	auto ML = Dir("MultiLevel"); auto L0 = Dir("Level0"); auto VP = Dir("VMeshPart");
+	std::vector<uint8_t> Ref(60, 0);
+	uint32_t Crc = FlModelCrc("m.vms"); uint16_t Start = 0, Cnt = 1;
+	std::memcpy(Ref.data() + 4, &Crc, 4); std::memcpy(Ref.data() + 16, &Start, 2); std::memcpy(Ref.data() + 18, &Cnt, 2);
+	VP->Children.push_back(Leaf("VMeshRef", Ref.data(), Ref.size()));
+	L0->Children.push_back(std::move(VP)); ML->Children.push_back(std::move(L0)); Model->Children.push_back(std::move(ML));
+	auto Hp = Dir("Hardpoints"); auto Fx = Dir("Fixed"); auto One = Dir("HpA");
+	float Pos[3] = {1, 2, 3};
+	One->Children.push_back(Leaf("Position", Pos, 12));
+	Fx->Children.push_back(std::move(One)); Hp->Children.push_back(std::move(Fx)); Model->Children.push_back(std::move(Hp));
+	Root->Children.push_back(std::move(Model));
+
+	auto Cmpnd = Dir("Cmpnd");
+	auto Part = Dir("Part_wing");
+	Part->Children.push_back(Leaf("Object name", "Wing\0", 5));
+	Part->Children.push_back(Leaf("File name", "wing.3db\0", 9));
+	auto RootPart = Dir("Root");
+	RootPart->Children.push_back(Leaf("Object name", "Root\0", 5));
+	RootPart->Children.push_back(Leaf("File name", "none.3db\0", 9));
+	Cmpnd->Children.push_back(std::move(RootPart));
+	Cmpnd->Children.push_back(std::move(Part));
+	auto Cons = Dir("Cons");
+	std::vector<uint8_t> Fix(176, 0);
+	std::strcpy((char*)Fix.data(), "Root"); std::strcpy((char*)Fix.data() + 64, "Wing");
+	float FixData[12] = {5, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1};
+	std::memcpy(Fix.data() + 128, FixData, 48);
+	Cons->Children.push_back(Leaf("Fix", Fix.data(), Fix.size()));
+	Cmpnd->Children.push_back(std::move(Cons));
+	Root->Children.push_back(std::move(Cmpnd));
+
+	FlModel M; std::string Err;
+	CHECK(BuildModel(*Root, M, Err));
+	CHECK(M.Parts.size() == 2);
+	CHECK(M.Parts[0].Name == "Root" && !M.Parts[0].bHasMesh && M.Parts[0].Parent == -1);
+	CHECK(M.Parts[1].Name == "Wing" && M.Parts[1].Parent == 0 && M.Parts[1].Position[0] == 5.0f);
+	CHECK(M.Parts[1].bHasMesh && M.Parts[1].Mesh.Groups.size() == 1 && M.Parts[1].Mesh.Positions.size() == 9);
+	CHECK(M.Parts[1].Hardpoints.size() == 1 && M.Parts[1].Hardpoints[0].Position[2] == 3.0f);
+
+	// einzelnes .3db: Meshes direkt in der Bibliothek, keine Teile
+	auto Single = Dir("/");
+	auto L2 = Dir("VMeshLibrary"); auto E2 = Dir("x.lod0-112.vms");
+	E2->Children.push_back(Leaf("VMeshData", Vms.data(), Vms.size()));
+	L2->Children.push_back(std::move(E2));
+	Single->Children.push_back(std::move(L2));
+	CHECK(BuildModel(*Single, M, Err) && M.Parts.size() == 1 && M.Parts[0].bHasMesh);
+	CHECK(!BuildModel(*Dir("/"), M, Err));                      // weder Teile noch Meshes
+
+	// Koordinatenumrechnung: vorn (-z) wird +X, rechts (+x) wird +Y, oben (+y) wird +Z; Meter -> cm
+	float P[3] = {1, 2, -3}, Q[3];
+	FlToUePosition(P, Q);
+	CHECK(Q[0] == 300.0f && Q[1] == 100.0f && Q[2] == 200.0f);
+	FlToUeDirection(P, Q);
+	CHECK(Q[0] == 3.0f && Q[1] == 1.0f && Q[2] == 2.0f);
+	float Id[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1}, R[9];
+	FlToUeRotation(Id, R);
+	CHECK(R[0] == 1.0f && R[4] == 1.0f && R[8] == 1.0f && R[1] == 0.0f);
+	// 90 Grad um die Hochachse (FL y) wird 90 Grad um UE-Z, mit gespiegelter Handedness (Vorzeichen bleibt als R[1] = -R[3] erhalten)
+	float Ry[9] = {0, 0, 1, 0, 1, 0, -1, 0, 0};
+	FlToUeRotation(Ry, R);
+	CHECK(std::fabs(R[8] - 1.0f) < 1e-6f && std::fabs(R[1] + R[3]) < 1e-6f && std::fabs(std::fabs(R[1]) - 1.0f) < 1e-6f);
+}
+
 int main()
 {
 	TestUtf();
@@ -407,6 +481,7 @@ int main()
 	TestShips();
 	TestRecords();
 	TestImage();
+	TestBuildModel();
 	std::printf(Failures ? "%d Fehler\n" : "alle Tests bestanden\n", Failures);
 	return Failures ? 1 : 0;
 }

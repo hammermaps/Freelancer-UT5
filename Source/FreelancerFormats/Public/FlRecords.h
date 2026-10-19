@@ -1,7 +1,7 @@
 // Allgemeine Datensaetze aus Freelancer-INIs (Ausruestung, Waren): Sektionstyp, Nickname, alle Eintraege.
 #pragma once
 #include "FlApi.h"
-#include "Ini.h"
+#include "FlIni.h"
 #include <set>
 #include <string>
 #include <utility>

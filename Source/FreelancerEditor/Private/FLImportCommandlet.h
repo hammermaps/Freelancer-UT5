@@ -34,7 +34,7 @@ public:
 	static void FillProperties(TMap<FName, FString>& Out, const fl::FlRecord& Record);
 
 private:
-	int32 ImportShips(const FString& DataDir);
+	int32 ImportShips(const FString& DataDir, const FString& ModelFilter);
 	int32 ImportEquipment(const FString& DataDir);
 	int32 ImportGoods(const FString& DataDir);
 };

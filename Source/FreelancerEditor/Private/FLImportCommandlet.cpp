@@ -5,10 +5,12 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Data/FLEquipmentData.h"
 #include "Data/FLGoodData.h"
+#include "Data/FLModelData.h"
 #include "Data/FLShipData.h"
-#include "Records.h"
+#include "FLModelImporter.h"
+#include "FlRecords.h"
 #include "Misc/PackageName.h"
-#include "ShipData.h"
+#include "FlShipData.h"
 #include "HAL/FileManager.h"
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
@@ -85,8 +87,9 @@ fl::IniFile LoadIni(const FString& Path)
 }
 }
 
-int32 UFLImportCommandlet::ImportShips(const FString& DataDir)
+int32 UFLImportCommandlet::ImportShips(const FString& DataDir, const FString& ModelFilter)
 {
+	FFLModelImporter ModelImporter(DataDir);
 	const FString IniPath = FPaths::Combine(DataDir, TEXT("SHIPS"), TEXT("shiparch.ini"));
 	fl::IniFile Ini = fl::IniFile::Load(TCHAR_TO_UTF8(*IniPath));
 	if (!Ini.bOk)
@@ -99,7 +102,14 @@ int32 UFLImportCommandlet::ImportShips(const FString& DataDir)
 	for (const fl::FlShipRecord& R : fl::ParseShipArch(Ini))
 	{
 		const FString Name = FString::Printf(TEXT("DA_Ship_%s"), UTF8_TO_TCHAR(R.Nickname.c_str()));
-		if (!CreateAndSave<UFLShipData>(TEXT("/Game/Imported/Ships/") + Name, Name, [&R](UFLShipData* D) { FillShipData(D, R); }))
+		UFLModelData* ModelData = nullptr;
+		if (!ModelFilter.IsEmpty() && (ModelFilter == TEXT("all") || ModelFilter.Equals(UTF8_TO_TCHAR(R.Nickname.c_str()), ESearchCase::IgnoreCase)))
+		{
+			TArray<FString> Libs;
+			for (const std::string& L : R.MaterialLibraries) { Libs.Add(UTF8_TO_TCHAR(L.c_str())); }
+			ModelData = ModelImporter.ImportModel(UTF8_TO_TCHAR(R.Nickname.c_str()), UTF8_TO_TCHAR(R.Archetype.c_str()), Libs);
+		}
+		if (!CreateAndSave<UFLShipData>(TEXT("/Game/Imported/Ships/") + Name, Name, [&R, ModelData](UFLShipData* D) { FillShipData(D, R); if (ModelData) { D->Model = ModelData; } }))
 		{
 			return -1;
 		}
@@ -235,7 +245,9 @@ int32 UFLImportCommandlet::Main(const FString& Params)
 		UE_LOG(LogFLImport, Error, TEXT("Aufruf: -run=FLImport -source=<Pfad zu FL/DATA>"));
 		return 1;
 	}
-	if (ImportShips(DataDir) < 0 || ImportEquipment(DataDir) < 0 || ImportGoods(DataDir) < 0)
+	FString ModelFilter;
+	FParse::Value(*Params, TEXT("-models="), ModelFilter); // "all" oder Schiff-Nickname
+	if (ImportShips(DataDir, ModelFilter) < 0 || ImportEquipment(DataDir) < 0 || ImportGoods(DataDir) < 0)
 	{
 		return 2;
 	}

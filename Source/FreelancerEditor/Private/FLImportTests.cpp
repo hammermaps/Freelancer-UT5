@@ -6,8 +6,8 @@
 #include "Misc/AutomationTest.h"
 #include "Data/FLEquipmentData.h"
 #include "Data/FLGoodData.h"
-#include "Records.h"
-#include "ShipData.h"
+#include "FlRecords.h"
+#include "FlShipData.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLShipImportTest, "Freelancer.Import.ShipData",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -79,5 +79,52 @@ bool FFLEquipmentImportTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Preis"), G->Price, (int64)1234);
 	TestEqual(TEXT("Verweis"), G->Reference, FName("laser01"));
 	TestFalse(TEXT("combinable"), G->bCombinable);
+	return true;
+}
+
+#include "Data/FLModelData.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
+
+// Prueft das importierte Modell des Liberty-Fighters (nur wenn der Import gelaufen ist; Content/Imported ist nicht im Repo).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLImportedModelTest, "Freelancer.Import.ImportedModel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLImportedModelTest::RunTest(const FString& Parameters)
+{
+	UFLModelData* Model = LoadObject<UFLModelData>(nullptr, TEXT("/Game/Imported/Models/DA_Model_li_fighter.DA_Model_li_fighter"));
+	if (!Model)
+	{
+		AddInfo(TEXT("li_fighter nicht importiert - Test uebersprungen (FLImport -models=li_fighter ausfuehren)"));
+		return true;
+	}
+	TestTrue(TEXT("mehrere Teile"), Model->Parts.Num() >= 5);
+
+	FBox Bounds(ForceInit);
+	int32 MeshParts = 0, Hardpoints = 0, MissingMaterials = 0;
+	TArray<FTransform> World;
+	World.SetNum(Model->Parts.Num());
+	for (int32 I = 0; I < Model->Parts.Num(); ++I)
+	{
+		const FFLModelPart& P = Model->Parts[I];
+		World[I] = (P.ParentIndex >= 0 && P.ParentIndex < I) ? P.LocalTransform * World[P.ParentIndex] : P.LocalTransform;
+		Hardpoints += P.Hardpoints.Num();
+		if (UStaticMesh* SM = P.Mesh.LoadSynchronous())
+		{
+			++MeshParts;
+			Bounds += SM->GetBounds().GetBox().TransformBy(World[I]);
+			for (const FStaticMaterial& M : SM->GetStaticMaterials())
+			{
+				MissingMaterials += M.MaterialInterface ? 0 : 1;
+			}
+		}
+	}
+	TestTrue(TEXT("Teile mit Mesh"), MeshParts >= 3);
+	TestTrue(TEXT("Hardpoints vorhanden"), Hardpoints >= 10);
+	TestEqual(TEXT("alle Materialien aufgeloest"), MissingMaterials, 0);
+	const FVector Size = Bounds.GetSize();
+	// Ein Jaeger ist rund 10-20 m lang (X = vorn) und deutlich laenger als hoch
+	TestTrue(*FString::Printf(TEXT("Laenge 5-30 m (ist %.1f m)"), Size.X / 100.0), Size.X > 500.0 && Size.X < 3000.0);
+	TestTrue(*FString::Printf(TEXT("Nase zeigt nach +X (Laenge %.0f > Hoehe %.0f)"), Size.X, Size.Z), Size.X > Size.Z);
 	return true;
 }

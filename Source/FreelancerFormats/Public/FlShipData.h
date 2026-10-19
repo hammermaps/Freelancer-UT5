@@ -1,7 +1,7 @@
 // Schiffsdefinitionen aus shiparch.ini (Datenmodell des Imports, ohne UE-Abhaengigkeit).
 #pragma once
 #include "FlApi.h"
-#include "Ini.h"
+#include "FlIni.h"
 #include <string>
 #include <vector>
 

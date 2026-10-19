@@ -1,8 +1,9 @@
-#include "Model.h"
-#include "Ini.h"
+#include "FlModel.h"
+#include "FlIni.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <map>
 #include <cstring>
 
 namespace fl
@@ -188,5 +189,118 @@ std::vector<FlTexture> ReadTextures(const UtfNode& Root)
 		R.push_back(std::move(Tex));
 	}
 	return R;
+}
+
+void FlToUeDirection(const float In[3], float Out[3])
+{
+	Out[0] = -In[2]; Out[1] = In[0]; Out[2] = In[1];
+}
+
+void FlToUePosition(const float In[3], float Out[3])
+{
+	FlToUeDirection(In, Out);
+	for (int i = 0; i < 3; ++i) Out[i] *= 100.0f;
+}
+
+void FlToUeRotation(const float R[9], float Out[9])
+{
+	// M: UE = M * FL mit M = [[0,0,-1],[1,0,0],[0,1,0]]
+	static const float M[9] = {0, 0, -1, 1, 0, 0, 0, 1, 0};
+	float T[9];
+	for (int r = 0; r < 3; ++r)
+		for (int c = 0; c < 3; ++c)
+		{
+			float S = 0;
+			for (int k = 0; k < 3; ++k) S += M[r * 3 + k] * R[k * 3 + c];
+			T[r * 3 + c] = S;
+		}
+	for (int r = 0; r < 3; ++r)
+		for (int c = 0; c < 3; ++c)
+		{
+			float S = 0;
+			for (int k = 0; k < 3; ++k) S += T[r * 3 + k] * M[c * 3 + k]; // M^T
+			Out[r * 3 + c] = S;
+		}
+}
+
+namespace
+{
+std::map<uint32_t, VmsMesh> ReadMeshLibrary(const UtfNode& Root, bool bLod0Only, std::vector<std::string>* Names = nullptr)
+{
+	std::map<uint32_t, VmsMesh> R;
+	const UtfNode* Lib = FindChild(Root, "VMeshLibrary");
+	if (!Lib) return R;
+	for (auto& E : Lib->Children)
+	{
+		std::string L = E->Name;
+		std::transform(L.begin(), L.end(), L.begin(), [](unsigned char C) { return (char)std::tolower(C); });
+		if (bLod0Only && L.find("lod") != std::string::npos && L.find("lod0") == std::string::npos) continue;
+		const UtfNode* D = FindChild(*E, "VMeshData");
+		VmsMesh M; std::string Err;
+		if (D && ParseVms(D->Data, M, Err))
+		{
+			R[FlModelCrc(E->Name)] = std::move(M);
+			if (Names) Names->push_back(E->Name);
+		}
+	}
+	return R;
+}
+}
+
+bool BuildModel(const UtfNode& Root, FlModel& Out, std::string& Error)
+{
+	Out.Parts.clear();
+	auto Meshes = ReadMeshLibrary(Root, false);
+	auto Parts = ReadParts(Root);
+	if (Parts.empty())
+	{
+		// Einzelnes .3db: alle LOD0-Meshes der Bibliothek zu einem Teil vereinen (ein Mesh ist die Regel)
+		std::vector<std::string> Names;
+		auto Lod0 = ReadMeshLibrary(Root, true, &Names);
+		if (Lod0.empty()) { Error = "keine Meshes"; return false; }
+		FlModelPart P;
+		P.Name = "Root";
+		P.bHasMesh = true;
+		P.Mesh = Lod0.begin()->second;
+		P.Hardpoints = ReadHardpoints(Root);
+		Out.Parts.push_back(std::move(P));
+		return true;
+	}
+	std::map<std::string, int> ByObject;
+	auto Lower = [](std::string S) { std::transform(S.begin(), S.end(), S.begin(), [](unsigned char C) { return (char)std::tolower(C); }); return S; };
+	for (auto& P : Parts)
+	{
+		FlModelPart MP;
+		MP.Name = P.Object;
+		if (const UtfNode* Model = FindChild(Root, P.File))
+		{
+			FlMeshRef Ref;
+			if (ReadLevel0Ref(*Model, Ref))
+			{
+				auto It = Meshes.find(Ref.MeshCrc);
+				if (It != Meshes.end())
+				{
+					MP.bHasMesh = true;
+					MP.Mesh = ExtractGroups(It->second, Ref.StartMesh, Ref.MeshCount);
+				}
+			}
+			MP.Hardpoints = ReadHardpoints(*Model);
+		}
+		ByObject[Lower(P.Object)] = (int)Out.Parts.size();
+		Out.Parts.push_back(std::move(MP));
+	}
+	for (auto& C : ReadConstructs(Root))
+	{
+		auto Ch = ByObject.find(Lower(C.Child)), Pa = ByObject.find(Lower(C.Parent));
+		if (Ch == ByObject.end()) continue;
+		FlModelPart& N = Out.Parts[Ch->second];
+		if (Pa != ByObject.end() && Pa->second != Ch->second) N.Parent = Pa->second;
+		std::memcpy(N.Position, C.Origin, 12);
+		std::memcpy(N.Rotation, C.Rotation, 36);
+		N.Joint = C.Kind;
+		std::memcpy(N.Axis, C.Axis, 12);
+		N.Min = C.Min; N.Max = C.Max;
+	}
+	return true;
 }
 }

@@ -7,6 +7,8 @@
 #include "FLShipData.generated.h"
 
 /** Schiffsdefinition, vom Importer (FLImport) aus shiparch.ini erzeugt. Werte sind daten-getrieben, nichts hardcoded. */
+class UFLModelData;
+
 UCLASS(BlueprintType)
 class FREELANCER_API UFLShipData : public UPrimaryDataAsset
 {
@@ -56,6 +58,10 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Flight")
 	FVector RotationInertia = FVector::ZeroVector;
+
+	/** Importiertes Modell (Teile, Hardpoints, Meshes); leer, solange kein Modell-Import lief */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Model")
+	TSoftObjectPtr<UFLModelData> Model;
 
 	/** Pfad des Originalmodells (nur Herkunft, wird zur Laufzeit nicht gelesen) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Source")

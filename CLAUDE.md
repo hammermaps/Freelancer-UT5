@@ -148,6 +148,8 @@ Jedes neue UE-Modul braucht **alles** davon, sonst bricht Build oder Start:
 **Automation Tests ausführen** (ohne `Quit`-ExecCmd, sonst endet der Lauf vor dem Test):
 `UnrealEditor-Cmd Freelancer.uproject -ExecCmds="Automation RunTests Freelancer.Import" -TestExit="Automation Test Queue Empty" -unattended -nullrhi -nosplash -ReportExportPath=<ordner>` (Ergebnis in `<ordner>/index.json`, UTF-8 mit BOM).
 
+**Modell-Import (Texturen, Materialien, Meshes):** `-run=FLImport -source=<DATA> -models=<schiff-nickname|all>` erzeugt zusätzlich `Content/Imported/{Textures,Materials,Meshes,Models}` (`T_`, `MI_`, `SM_`, `DA_Model_`) und setzt `UFLShipData::Model`. Master-Material `M_FL_Basic` (Parameter `BaseColorTex`, `Tint`) liegt in `Content/Freelancer/Materials/`. Koordinaten: Original (x rechts, y oben, −z vorn, Meter) → Unreal (x vorn, y rechts, z oben, cm) über `FlToUePosition/Direction/Rotation` in `FlModel.h`; Dreiecke werden dabei umgedreht. Wichtig: Das Netzlaufwerk ist teils schreibungsunabhängig, `std::ifstream` nicht – Originalpfade immer über `FFLModelImporter::ResolvePath` auflösen. **Header der Formatbibliothek tragen das Präfix `Fl`** (`FlModel.h` …), weil Namen wie `Model.h` mit Engine-Headern kollidieren.
+
 **Import ausführen:** `UnrealEditor-Cmd Freelancer.uproject -run=FLImport -source=<GameData/FL/DATA> -unattended -nullrhi -nosplash` (schreibt nach `Content/Imported/`, ist nicht im Repo).
 
 ## Konventionen
