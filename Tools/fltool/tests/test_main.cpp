@@ -1,6 +1,7 @@
 // Tests fuer flformats. Nur synthetische Daten, keine Originaldateien.
 #include "Ini.h"
 #include "Model.h"
+#include "Records.h"
 #include "ShipData.h"
 #include "Utf.h"
 #include "Vms.h"
@@ -295,6 +296,23 @@ static void TestShips()
 	CHECK(ParseShipArch(IniFile::Parse("")).empty());
 }
 
+static void TestRecords()
+{
+	const char* Text =
+		"[Gun]\nnickname = laser01\nHP_type = a, b\nhp_type = c\nDA_archetype = x\\y.cmp\n[LOD]\nnickname = skip\n[Gun]\nmass = 1\n[Good]\nnickname = laser01\nprice = 5\n";
+	auto Ini = IniFile::Parse(Text);
+	auto Eq = ParseRecords(Ini, NonEquipmentSections());
+	CHECK(Eq.size() == 1);                                   // LOD, Good und Gun ohne nickname fallen weg
+	CHECK(Eq[0].Section == "Gun" && Eq[0].Nickname == "laser01");
+	CHECK(Eq[0].Find("hp_type") && *Eq[0].Find("hp_type") == "a, b");   // Schluessel klein, Werte verbunden
+	CHECK(Eq[0].FindAll("hp_type").size() == 2 && Eq[0].FindAll("hp_type")[1] == "c");
+	CHECK(Eq[0].Find("nope") == nullptr);
+	auto Goods = ParseRecordsOfType(Ini, "GOOD");
+	CHECK(Goods.size() == 1 && *Goods[0].Find("price") == "5");
+	CHECK(NormalizePath("a\\b\\c.cmp") == "a/b/c.cmp");
+	CHECK(ParseRecords(IniFile::Parse(""), {}).empty());
+}
+
 int main()
 {
 	TestUtf();
@@ -303,6 +321,7 @@ int main()
 	TestModel();
 	TestCmp();
 	TestShips();
+	TestRecords();
 	std::printf(Failures ? "%d Fehler\n" : "alle Tests bestanden\n", Failures);
 	return Failures ? 1 : 0;
 }

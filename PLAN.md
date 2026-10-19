@@ -142,7 +142,7 @@ Jeder Meilenstein endet **mit mehreren verbundenen Clients**, nicht mit einem lo
 - [x] Hinweis (inzwischen behoben, Mount ohne `noexec`): `/media/Games` war `noexec` gemountet, `.so`-Dateien lassen sich von dort nicht laden. `Binaries/`, `Intermediate/`, `DerivedDataCache/` und `Saved/` liegen deshalb lokal in `~/UEBuild/Freelancer/` (Symlinks im Projekt). Mit `exec` im fstab wäre das nicht mehr nötig.
 
 ### M1 – Datenimport-Pipeline (Wochen 2–4)
-**Status M1 (19.10.2026):** Module `FreelancerFormats` (Parser, wiederverwendet von `fltool`) und `FreelancerEditor` (Commandlet `FLImport`) laufen; `UFLShipData` (Data Asset) wird aus `shiparch.ini` erzeugt: 69 Schiffe importiert nach `Content/Imported/Ships/` (Automation Test `Freelancer.Import.ShipData` grün). Offen: Ausrüstung, Waren, Märkte, Systeme, Solars, Mesh-/Textur-Konverter in UE, Schiff im Level.
+**Status M1 (19.10.2026):** Module `FreelancerFormats` (Parser, auch von `fltool` genutzt) und `FreelancerEditor` (Commandlet `FLImport`) laufen; wiederholbarer Import erzeugt Data Assets nach `Content/Imported/` (nicht im Repo): **69 Schiffe** (`UFLShipData`), **1689 Ausrüstungsobjekte** (`UFLEquipmentData`: Gun, Munition, Engine, Power, Shield, Thruster, … mit Properties-Map) und **855 Waren** (`UFLGoodData`). Automation Tests `Freelancer.Import.*` grün. Offen: Märkte, Systeme/Universum, Solars, Fraktionen, Mesh-/Textur-Konverter in UE, Schiff im Level.
 - INI-Parser (Sektionen mit wiederholten Keys, `;`-Kommentare, CRLF, `\`-Pfade). Referenz: `LibreLancer.Data`.
 - Modul `FreelancerEditor` mit Commandlet `FLImport` (alles C++).
 - Import direkt in `Content/Imported/`: Schiffe (`shiparch.ini`), Ausrüstung (`*_equip.ini`), Waren (`goods.ini`),
