@@ -2,6 +2,8 @@
 
 #include "Flight/FLStaticCollision.h"
 
+#include "Data/FLAsteroidFieldData.h"
+#include "Data/FLModelData.h"
 #include "Data/FLSolarData.h"
 #include "Data/FLSystemData.h"
 #include "Engine/World.h"
@@ -23,7 +25,62 @@ int32 UFLStaticCollisionSubsystem::LoadSystem(const UFLSystemData& System)
 		return LoadObject<UFLSolarData>(nullptr, *FString::Printf(TEXT("/Game/Imported/Solars/%s.%s"), *Name, *Name));
 	});
 	Spheres.Append(Built);
+
+	// Asteroidenfelder: Feld-Asset + Zone + Ausschlusszonen -> Laufzeitfeld
+	TMap<FName, double> RadiusCache;
+	auto RadiusOf = [&RadiusCache](FName Asteroid) -> double
+	{
+		if (const double* Known = RadiusCache.Find(Asteroid))
+		{
+			return *Known;
+		}
+		const FString Name = FString::Printf(TEXT("DA_Solar_%s"), *Asteroid.ToString());
+		const UFLSolarData* Solar = LoadObject<UFLSolarData>(nullptr, *FString::Printf(TEXT("/Game/Imported/Solars/%s.%s"), *Name, *Name));
+		double Radius = 0.0;
+		if (Solar)
+		{
+			Radius = Solar->Radius > 0.f ? Solar->Radius : FLCollision::ModelRadius(Solar->Model.LoadSynchronous(), 0.0);
+		}
+		RadiusCache.Add(Asteroid, Radius);
+		return Radius;
+	};
+	auto FindZone = [&System](FName Name) -> const FFLSystemZone*
+	{
+		return System.Zones.FindByPredicate([Name](const FFLSystemZone& Z) { return Z.Nickname == Name; });
+	};
+	int32 FieldCount = 0;
+	for (const FFLSystemField& Link : System.AsteroidFields)
+	{
+		const FString Name = FString::Printf(TEXT("DA_Field_%s"), *Link.FieldName.ToString());
+		const UFLAsteroidFieldData* Data = LoadObject<UFLAsteroidFieldData>(nullptr, *FString::Printf(TEXT("/Game/Imported/AsteroidFields/%s.%s"), *Name, *Name));
+		const FFLSystemZone* Zone = FindZone(Link.ZoneName);
+		if (!Data || !Zone)
+		{
+			continue;
+		}
+		TArray<const FFLSystemZone*> Exclusions;
+		for (FName Ex : Data->Exclusions)
+		{
+			Exclusions.Add(FindZone(Ex));
+		}
+		FFLFieldRuntime Field = FLAsteroids::BuildField(*Data, Zone, Exclusions, RadiusOf);
+		if (!Field.Asteroids.IsEmpty())
+		{
+			AddField(MoveTemp(Field));
+			++FieldCount;
+		}
+	}
+	UE_LOG(LogFLStatic, Display, TEXT("%d Asteroidenfelder aktiv"), FieldCount);
 	return Built.Num();
+}
+
+void UFLStaticCollisionSubsystem::QueryAsteroids(const FVector& Position, double Radius, TArray<FFLStaticSphere>& Out) const
+{
+	for (const FFLFieldRuntime& F : Fields)
+	{
+		// Grobtest: nur Felder, deren Zone in der Naehe liegt (Zonenmitte-Test im Query selbst, hier spart man das Wuerfelraster)
+		FLAsteroids::Query(F, Position, Radius, Out);
+	}
 }
 
 void UFLStaticCollisionSubsystem::Query(const FVector& Position, double Radius, TArray<const FFLStaticSphere*>& OutHits) const

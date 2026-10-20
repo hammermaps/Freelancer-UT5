@@ -171,6 +171,9 @@ void AFLShip::HandleCollisions()
 		TArray<const FFLStaticSphere*> Hits;
 		const FFLFlightState& S = Movement->GetState();
 		Statics->Query(S.Position, CollisionRadius, Hits);
+		TArray<FFLStaticSphere> Asteroids;
+		Statics->QueryAsteroids(S.Position, CollisionRadius, Asteroids);
+		for (const FFLStaticSphere& A : Asteroids) { Hits.Add(&A); }
 		for (const FFLStaticSphere* Hit : Hits)
 		{
 			const FFLCollisionBody Body{Movement->GetState().Position, Movement->GetState().Velocity, Movement->Params.Mass, (double)CollisionRadius};

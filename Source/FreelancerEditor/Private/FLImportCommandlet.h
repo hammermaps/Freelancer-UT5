@@ -52,7 +52,8 @@ public:
 
 	/** Fuellt ein System aus dem [system]-Eintrag der universe.ini und den Records der System-INI (Objekte, Zonen, Info). */
 	static void FillSystemData(UFLSystemData* Data, const fl::FlRecord& UniverseEntry, const std::vector<fl::FlRecord>& Objects,
-		const std::vector<fl::FlRecord>& Zones, const fl::FlRecord* Info, const TArray<FName>& Bases);
+		const std::vector<fl::FlRecord>& Zones, const fl::FlRecord* Info, const TArray<FName>& Bases,
+		const std::vector<std::pair<std::string, std::string>>& AsteroidFields = {});
 
 	/** Fuegt die Waren eines Marktes (Kommodity/Ausruestung/Schiff) dem Marktasset hinzu. */
 	static void AddMarketGoods(UFLMarketData* Data, const fl::FlBaseMarket& Market, uint8 Kind);

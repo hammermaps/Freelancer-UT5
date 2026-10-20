@@ -154,7 +154,7 @@ bool FFLSystemImportTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	UFLSystemData* D = NewObject<UFLSystemData>(GetTransientPackage());
-	UFLImportCommandlet::FillSystemData(D, Sys[0], Objects, Zones, &Info[0], {FName("Li01_01_Base")});
+	UFLImportCommandlet::FillSystemData(D, Sys[0], Objects, Zones, &Info[0], {FName("Li01_01_Base")}, {{"solar\\asteroids\\Li01_Pittsburgh_debris_field_001.ini", "Zone_Li01_Pittsburgh_debris_001"}, {"", "ohne_datei"}});
 	TestEqual(TEXT("Nickname"), D->Nickname, FName("Li01"));
 	TestEqual(TEXT("Karte x"), D->MapPosition.X, 0.5);
 	TestEqual(TEXT("Anzahl Objekte"), D->Objects.Num(), 2);
@@ -174,6 +174,12 @@ bool FFLSystemImportTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Box z-Achse (Original z=300 -> Unreal x)"), D->Zones[1].Size.X, 30000.0);
 	TestEqual(TEXT("Info"), D->Info.FindRef(FName("navmapscale")), FString(TEXT("1.5")));
 	TestEqual(TEXT("Basen"), D->Bases.Num(), 1);
+	TestEqual(TEXT("Asteroidenfelder"), D->AsteroidFields.Num(), 2);
+	if (D->AsteroidFields.Num() == 2)
+	{
+		TestEqual(TEXT("Feldname: Dateiname ohne Pfad/Endung, klein"), D->AsteroidFields[0].FieldName, FName("li01_pittsburgh_debris_field_001"));
+		TestEqual(TEXT("Zone des Felds"), D->AsteroidFields[0].ZoneName, FName("Zone_Li01_Pittsburgh_debris_001"));
+	}
 	bool bFound = false;
 	D->FindObjectOrDefault(FName("Li01_to_Li02"), bFound);
 	TestTrue(TEXT("Objektsuche"), bFound);

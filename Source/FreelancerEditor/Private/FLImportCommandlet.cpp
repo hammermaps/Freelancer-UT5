@@ -294,7 +294,8 @@ FString Prop(const fl::FlRecord& R, const char* Key)
 }
 
 void UFLImportCommandlet::FillSystemData(UFLSystemData* Data, const fl::FlRecord& U, const std::vector<fl::FlRecord>& Objects,
-	const std::vector<fl::FlRecord>& Zones, const fl::FlRecord* Info, const TArray<FName>& Bases)
+	const std::vector<fl::FlRecord>& Zones, const fl::FlRecord* Info, const TArray<FName>& Bases,
+	const std::vector<std::pair<std::string, std::string>>& AsteroidFields)
 {
 	Data->Nickname = FName(UTF8_TO_TCHAR(U.Nickname.c_str()));
 	Data->IdsName = FCString::Atoi(*Prop(U, "strid_name"));
@@ -302,6 +303,15 @@ void UFLImportCommandlet::FillSystemData(UFLSystemData* Data, const fl::FlRecord
 	Data->MapPosition = Map.size() >= 2 ? FVector2D(Map[0], Map[1]) : FVector2D::ZeroVector;
 	FillProperties(Data->Properties, U);
 	Data->Bases = Bases;
+	Data->AsteroidFields.Reset();
+	for (const auto& F : AsteroidFields)
+	{
+		// "solar\\asteroids\\Li01_Pittsburgh_x.ini" -> "li01_pittsburgh_x"
+		FFLSystemField Out;
+		Out.FieldName = FName(*FPaths::GetBaseFilename(FString(UTF8_TO_TCHAR(fl::NormalizePath(F.first).c_str()))).ToLower());
+		Out.ZoneName = FName(UTF8_TO_TCHAR(F.second.c_str()));
+		Data->AsteroidFields.Add(Out);
+	}
 	Data->Info.Reset();
 	if (Info)
 	{
@@ -378,6 +388,7 @@ int32 UFLImportCommandlet::ImportUniverse(const FString& DataDir)
 		const FString File = Prop(S, "file");
 		const FString Path = Paths.ResolvePath(TEXT("UNIVERSE/") + File.Replace(TEXT("\\"), TEXT("/")));
 		std::vector<fl::FlRecord> Objects, Zones;
+		std::vector<std::pair<std::string, std::string>> Fields;
 		fl::FlRecord Info;
 		bool bHasInfo = false;
 		if (Path.IsEmpty())
@@ -394,6 +405,12 @@ int32 UFLImportCommandlet::ImportUniverse(const FString& DataDir)
 			}
 			for (const fl::FlRecord& R : fl::ParseRecordsOfType(SysIni, "Object")) { Objects.push_back(R); }
 			for (const fl::FlRecord& R : fl::ParseRecordsOfType(SysIni, "zone")) { Zones.push_back(R); }
+			for (const fl::IniSection* Sec : SysIni.FindAll("Asteroids"))
+			{
+				const fl::IniEntry* FieldFile = Sec->Find("file");
+				const fl::IniEntry* FieldZone = Sec->Find("zone");
+				if (FieldFile && FieldZone && !FieldFile->Values.empty() && !FieldZone->Values.empty()) { Fields.emplace_back(FieldFile->Values[0], FieldZone->Values[0]); }
+			}
 			// SystemInfo hat einen nickname, Eintraege der Sektion werden als Info uebernommen
 			for (const fl::IniSection* Sec : SysIni.FindAll("SystemInfo"))
 			{
@@ -416,7 +433,7 @@ int32 UFLImportCommandlet::ImportUniverse(const FString& DataDir)
 		TArray<FName> Bases = BasesBySystem.FindRef(UTF8_TO_TCHAR(S.Nickname.c_str()));
 		Bases.Sort(FNameLexicalLess());
 		if (!CreateAndSave<UFLSystemData>(TEXT("/Game/Imported/Systems/") + Name, Name,
-			[&](UFLSystemData* D) { FillSystemData(D, S, Objects, Zones, bHasInfo ? &Info : nullptr, Bases); }))
+			[&](UFLSystemData* D) { FillSystemData(D, S, Objects, Zones, bHasInfo ? &Info : nullptr, Bases, Fields); }))
 		{
 			return -1;
 		}

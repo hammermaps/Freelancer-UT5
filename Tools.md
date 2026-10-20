@@ -78,6 +78,10 @@ Software-Darstellung einer `.glb` (z. B. von `fltool cmp export`) in drei Ansich
 
 `Tools/load_flight_net.sh [Clients=12] [Sekunden=60]`: gekochter Server + N Bot-Clients (`-nullrhi`, `-FLBot`, `t.MaxFPS 60`, je eigenes Log `load_client_<i>.log`). Gibt aus: Joins, Server-CPU/RAM/Frame-Zeit, Netz (Loopback-Bytes je Client), Client-RAM, max. Vorhersagefehler/Korrekturen, abgelehnte Bewegungen, Fehlerzeilen. Bestanden = alle Clients beigetreten, Fehler < 150 cm, keine Ablehnungen, Server-Tick ≤ 40 ms, keine Fehlerzeilen. Messwerte stehen in `PLAN.md` (M2). Grenze auf einem Rechner: RAM (ca. 350 MB je Bot-Client).
 
+## accept_asteroids_net.sh – Abnahmetest Asteroidenfelder
+
+`Tools/accept_asteroids_net.sh`: Server mit `-FLSystem=Li01` und Startregion mitten im Trümmerfeld `Zone_Li01_Pittsburgh_debris_001` (`-FLSpawnOffset=6338000,4767500,0`), 2 Bot-Clients. Bestanden = Felder aktiv, Bots kollidieren mit Asteroiden (`fest li01_…` im Server-Log), 2 Joins, 0 Fehlerzeilen, Server-Tick ≤ 40 ms.
+
 ## Typischer Ablauf: Schiff nach Blender
 
 ```

@@ -91,6 +91,21 @@ struct FREELANCER_API FFLSystemZone
 	TMap<FName, FString> Properties;
 };
 
+/** Verknuepfung "Asteroidenfeld fuellt Zone" aus [Asteroids] der System-INI. */
+USTRUCT(BlueprintType)
+struct FREELANCER_API FFLSystemField
+{
+	GENERATED_BODY()
+
+	/** Dateiname des Felds ohne Endung, klein (Asset DA_Field_<Name>) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FName FieldName;
+
+	/** Zone, die das Feld ausfuellt */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FName ZoneName;
+};
+
 /** Ein Sonnensystem aus universe.ini + System-INI. Der Server leitet daraus Instanzen und Spawns ab. */
 UCLASS(BlueprintType)
 class FREELANCER_API UFLSystemData : public UPrimaryDataAsset
@@ -113,6 +128,10 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TArray<FFLSystemZone> Zones;
+
+	/** Asteroidenfelder dieses Systems (Feld + Zone) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TArray<FFLSystemField> AsteroidFields;
 
 	/** Basen dieses Systems aus universe.ini (Nickname) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Flight/FLAsteroids.h"
 #include "Flight/FLCollision.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "FLStaticCollision.generated.h"
@@ -23,6 +24,12 @@ public:
 	/** Registriert alle Objekte eines Systems; Solars werden unter /Game/Imported/Solars/DA_Solar_<Archetyp> gesucht. Gibt die Zahl der Kugeln zurueck. */
 	int32 LoadSystem(const UFLSystemData& System);
 
+	void AddField(FFLFieldRuntime&& Field) { Fields.Add(MoveTemp(Field)); }
+	const TArray<FFLFieldRuntime>& GetFields() const { return Fields; }
+
+	/** Asteroiden aller Felder in der Naehe einer Kugel (Server, pro Tick und Schiff) */
+	void QueryAsteroids(const FVector& Position, double Radius, TArray<FFLStaticSphere>& Out) const;
+
 	/** Kugeln, die eine Kugel (Position, Radius) beruehren; nur der Server nutzt das. */
 	void Query(const FVector& Position, double Radius, TArray<const FFLStaticSphere*>& OutHits) const;
 
@@ -30,6 +37,7 @@ public:
 
 private:
 	TArray<FFLStaticSphere> Spheres;
+	TArray<FFLFieldRuntime> Fields;
 };
 
 /** Platzierbarer Actor (Server): laedt beim Start ein Sonnensystem und registriert dessen feste Kugeln. */
