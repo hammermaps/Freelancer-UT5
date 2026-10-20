@@ -74,6 +74,10 @@ Software-Darstellung einer `.glb` (z. B. von `fltool cmp export`) in drei Ansich
 
 `Tools/accept_flight_net.sh [Archive-Ordner]`: gekochter Server (`L_FlightTest`) + 2 Clients (`-nullrhi`, `-FLBot`, `t.MaxFPS 60`). Bestanden = 2 Joins, 0 Fehlerzeilen, Besitzer-Schiff Rolle 2 und fremdes Schiff Rolle 1 gemeldet, maximaler Vorhersagefehler des Besitzers < 150 cm. Level mit `Tools/create_flight_test_level.py` erzeugen (alte Datei vorher verschieben). Voraussetzung: `Engine/cook_freelancer.sh` mit aktuellem Code.
 
+## load_flight_net.sh – Lasttest M2
+
+`Tools/load_flight_net.sh [Clients=12] [Sekunden=60]`: gekochter Server + N Bot-Clients (`-nullrhi`, `-FLBot`, `t.MaxFPS 60`, je eigenes Log `load_client_<i>.log`). Gibt aus: Joins, Server-CPU/RAM/Frame-Zeit, Netz (Loopback-Bytes je Client), Client-RAM, max. Vorhersagefehler/Korrekturen, abgelehnte Bewegungen, Fehlerzeilen. Bestanden = alle Clients beigetreten, Fehler < 150 cm, keine Ablehnungen, Server-Tick ≤ 40 ms, keine Fehlerzeilen. Messwerte stehen in `PLAN.md` (M2). Grenze auf einem Rechner: RAM (ca. 350 MB je Bot-Client).
+
 ## Typischer Ablauf: Schiff nach Blender
 
 ```

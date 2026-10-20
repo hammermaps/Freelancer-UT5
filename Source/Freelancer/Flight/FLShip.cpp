@@ -27,6 +27,8 @@ AFLShip::AFLShip()
 	bReplicates = true;
 	SetReplicatingMovement(false); // eigene Bewegungsreplikation (Vorhersage/Abgleich)
 	NetUpdateFrequency = 30.f;
+	// Relevanz: Schiffe jenseits von 10 km (Sichtweite im Original begrenzt) werden nicht zu diesem Client repliziert
+	NetCullDistanceSquared = 1.0e12; // (10 km = 1.000.000 cm)^2
 	SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
 	Movement = CreateDefaultSubobject<UFLShipMovementComponent>(TEXT("Movement"));
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
