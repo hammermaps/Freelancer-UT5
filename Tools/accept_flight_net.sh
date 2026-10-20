@@ -1,6 +1,7 @@
 #!/bin/bash
 # Abnahmetest M2: Server + 2 Clients fliegen im Bot-Modus (Level L_FlightTest). Prueft Vorhersage/Abgleich im Netz.
 # Voraussetzung: gekochte Pakete in ~/UEBuild/Archive (Engine/cook_freelancer.sh). Exit-Code 0 = bestanden.
+# (Neustart nach Zerstoerung teleportiert das Schiff: dann wird der Vorhersagefehler nicht bewertet.)
 # Kriterien (Loopback; zusaetzlich: System Li01 geladen, Testkugel wird getroffen): beide Clients treten bei; der Besitzer-Client meldet sein Schiff mit Rolle 2 (AutonomousProxy),
 # das fremde Schiff mit Rolle 1 (SimulatedProxy) und Tempo > 0; Positionsfehler des Besitzers < 150 cm; keine Fehlerzeilen.
 A=${1:-$HOME/UEBuild/Archive}
@@ -26,9 +27,11 @@ ERR=$(cat "$SLOG" "$CLOG1" "$CLOG2" 2>/dev/null | grep -c "LogOutputDevice: Erro
 OWN=$(cat "$CLOG1" "$CLOG2" 2>/dev/null | grep "LogFLShip" | grep -c "Rolle=2")
 SIM=$(cat "$CLOG1" "$CLOG2" 2>/dev/null | grep "LogFLShip" | grep -c "Rolle=1")
 MAXERR=$(cat "$CLOG1" "$CLOG2" 2>/dev/null | grep "Rolle=2" | sed -E 's/.*MaxFehler=([0-9.]+) cm.*/\1/' | sort -n | tail -1)
+DEAD=$(grep -c "Zerstoert:" "$SLOG"); REVIVE=$(grep -c "Neustart:" "$SLOG")   # zerstoerte Schiffe starten neu (Teleport)
 SYS=$(grep -h "System Li01:" "$SLOG" | sed -E 's/.*Li01: ([0-9]+) feste.*/\1/' | head -1)
 STATIC=$(grep -c "fest TestSphere" "$SLOG")
+echo "Zerstoert=$DEAD Neustarts=$REVIVE"
 echo "System Li01: ${SYS:-0} feste Kugeln, Zusammenstoesse mit der Testkugel: $STATIC"
 echo "Joins=$JOIN Fehlerzeilen=$ERR Besitzer-Zeilen=$OWN Fremde-Zeilen=$SIM MaxFehler=${MAXERR:-n/a} cm"
-if [ "$JOIN" -ge 2 ] && [ "${SYS:-0}" -gt 0 ] && [ "$STATIC" -ge 1 ] && [ "$ERR" -eq 0 ] && [ "$OWN" -ge 1 ] && [ "$SIM" -ge 1 ] && [ -n "$MAXERR" ] && awk "BEGIN{exit !($MAXERR < 1000)}"; then echo BESTANDEN; exit 0; fi
+if [ "$JOIN" -ge 2 ] && [ "${SYS:-0}" -gt 0 ] && [ "$STATIC" -ge 1 ] && [ "$ERR" -eq 0 ] && [ "$OWN" -ge 1 ] && [ "$SIM" -ge 1 ] && [ -n "$MAXERR" ] && { [ "$DEAD" -gt 0 ] || awk "BEGIN{exit !($MAXERR < 1000)}"; }; then echo BESTANDEN; exit 0; fi
 echo DURCHGEFALLEN; exit 1

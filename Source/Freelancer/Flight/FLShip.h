@@ -42,6 +42,24 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ship")
 	TObjectPtr<UCameraComponent> Camera;
 
+	/** Trefferpunkte (hit_pts aus den Schiffsdaten); werden repliziert. */
+	UPROPERTY(ReplicatedUsing = OnRep_Hull, VisibleAnywhere, BlueprintReadOnly, Category = "Ship")
+	float Hull = 0.f;
+
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly, Category = "Ship")
+	float MaxHull = 0.f;
+
+	/** Zerstoert: unsichtbar und ohne Kollision bis zum Neustart am Startpunkt */
+	UPROPERTY(ReplicatedUsing = OnRep_Dead, VisibleAnywhere, BlueprintReadOnly, Category = "Ship")
+	bool bDead = false;
+
+	/** Sekunden bis zum Neustart nach der Zerstoerung */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ship")
+	float RespawnDelay = 3.f;
+
+	/** Server: Schaden anwenden; bei 0 Trefferpunkten wird das Schiff zerstoert. Gibt den abgezogenen Schaden zurueck. */
+	double ApplyDamage(double Damage);
+
 	/** Kollisionsradius in cm (aus dem Modell berechnet) */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ship")
 	float CollisionRadius = 500.f;
@@ -64,6 +82,10 @@ public:
 	void ServerMoves(const TArray<FFLMove>& Moves);
 
 	/** Server -> besitzender Client: bestaetigter Zustand nach Verarbeitung bis Sequenz. */
+	/** Server -> Besitzer: Neustart (Zustand setzen, Verlauf verwerfen). */
+	UFUNCTION(Client, Reliable)
+	void ClientTeleport(const FFLFlightState& NewState);
+
 	UFUNCTION(Client, Unreliable)
 	void ClientAck(uint32 AckedSequence, const FFLFlightState& ServerState);
 
@@ -74,6 +96,12 @@ protected:
 
 	UFUNCTION()
 	void OnRep_RepState();
+
+	UFUNCTION()
+	void OnRep_Hull() {}
+
+	UFUNCTION()
+	void OnRep_Dead();
 
 private:
 	UPROPERTY(Transient)
@@ -98,5 +126,9 @@ private:
 
 	void ApplyShipData();
 	void HandleCollisions();
+	void Die();
+	void Respawn();
+	FFLFlightState SpawnState;
+	FTimerHandle RespawnTimer;
 	void SpawnVisual();
 };

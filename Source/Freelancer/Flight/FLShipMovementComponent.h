@@ -37,6 +37,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Flight")
 	void ResetState(const FFLFlightState& NewState);
 
+	/** Zustand setzen ohne die Sequenznummern zurueckzusetzen (Neustart nach Zerstoerung): Verlauf wird verworfen, laufende Bewegungen bleiben gueltig. */
+	void Teleport(const FFLFlightState& NewState);
+
 	/** Vom Server aufgerufen: Bewegung eines Clients anwenden. Gibt false zurueck, wenn nichts angewendet wurde. */
 	bool ServerApplyMove(const FFLMove& Move);
 

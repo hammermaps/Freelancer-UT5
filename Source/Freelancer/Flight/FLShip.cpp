@@ -13,6 +13,7 @@
 #include "InputActionValue.h"
 #include "EngineUtils.h"
 #include "Flight/FLCollision.h"
+#include "Flight/FLDamage.h"
 #include "Flight/FLShipMovementComponent.h"
 #include "Flight/FLStaticCollision.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -48,6 +49,9 @@ void AFLShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeP
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME_CONDITION(AFLShip, RepState, COND_SimulatedOnly);
+	DOREPLIFETIME(AFLShip, Hull);
+	DOREPLIFETIME(AFLShip, MaxHull);
+	DOREPLIFETIME(AFLShip, bDead);
 	DOREPLIFETIME_CONDITION(AFLShip, ShipData, COND_InitialOnly);
 	DOREPLIFETIME_CONDITION(AFLShip, Engine, COND_InitialOnly);
 }
@@ -60,6 +64,11 @@ void AFLShip::ApplyShipData()
 	{
 		Movement->Params = FLFlight::MakeParams(Ship, Eng);
 		CollisionRadius = (float)FLCollision::ModelRadius(Ship->Model.LoadSynchronous(), CollisionRadius);
+		if (HasAuthority())
+		{
+			MaxHull = (float)Ship->HitPoints;
+			Hull = MaxHull;
+		}
 	}
 }
 
@@ -97,6 +106,7 @@ void AFLShip::BeginPlay()
 	Start.Position = GetActorLocation();
 	Start.Rotation = GetActorQuat();
 	Movement->ResetState(Start);
+	SpawnState = Start;
 	if (IsLocallyControlled() || HasAuthority())
 	{
 		// Besitzer sendet Bewegungen als RPC an den Server
@@ -163,8 +173,58 @@ void AFLShip::OnLook(const FInputActionValue& V)
 	Raw.bLookIsDelta = true;
 }
 
+double AFLShip::ApplyDamage(double Damage)
+{
+	if (!HasAuthority() || bDead || MaxHull <= 0.f)
+	{
+		return 0.0;
+	}
+	double H = Hull;
+	const double Taken = FLDamage::Apply(H, Damage);
+	Hull = (float)H;
+	if (Hull <= 0.f)
+	{
+		Die();
+	}
+	return Taken;
+}
+
+void AFLShip::Die()
+{
+	bDead = true;
+	UE_LOG(LogFLShip, Display, TEXT("Zerstoert: %s (Neustart in %.0f s)"), *GetName(), RespawnDelay);
+	if (Visual) { Visual->SetActorHiddenInGame(true); }
+	GetWorldTimerManager().SetTimer(RespawnTimer, this, &AFLShip::Respawn, RespawnDelay, false);
+}
+
+void AFLShip::Respawn()
+{
+	Hull = MaxHull;
+	bDead = false;
+	FFLFlightState Fresh = SpawnState;
+	Fresh.CruisePhase = EFLCruisePhase::Off;
+	Movement->Teleport(Fresh);
+	if (Visual) { Visual->SetActorHiddenInGame(false); }
+	ClientTeleport(Fresh);
+	UE_LOG(LogFLShip, Display, TEXT("Neustart: %s"), *GetName());
+}
+
+void AFLShip::OnRep_Dead()
+{
+	if (Visual) { Visual->SetActorHiddenInGame(bDead); }
+}
+
+void AFLShip::ClientTeleport_Implementation(const FFLFlightState& NewState)
+{
+	Movement->Teleport(NewState);
+}
+
 void AFLShip::HandleCollisions()
 {
+	if (bDead)
+	{
+		return; // zerstoerte Schiffe kollidieren nicht
+	}
 	// Feste Objekte (Planeten, Stationen)
 	if (const UFLStaticCollisionSubsystem* Statics = GetWorld()->GetSubsystem<UFLStaticCollisionSubsystem>())
 	{
@@ -181,7 +241,9 @@ void AFLShip::HandleCollisions()
 			if (R.bHit)
 			{
 				Movement->ApplyCollision(R.DeltaVelocityA, R.PushA, R.ImpactSpeed);
-				UE_LOG(LogFLShip, Display, TEXT("Kollision %s <-> fest %s: Aufprall %.0f cm/s"), *GetName(), *Hit->Id.ToString(), R.ImpactSpeed);
+				const double Damage = FLDamage::Collision(R.ImpactSpeed, Movement->Params.Mass, 0.0, 0.3);
+				ApplyDamage(Damage);
+				UE_LOG(LogFLShip, Display, TEXT("Kollision %s <-> fest %s: Aufprall %.0f cm/s, Schaden %.0f, Rumpf %.0f/%.0f"), *GetName(), *Hit->Id.ToString(), R.ImpactSpeed, Damage, Hull, MaxHull);
 			}
 		}
 	}
@@ -191,7 +253,7 @@ void AFLShip::HandleCollisions()
 	for (TActorIterator<AFLShip> It(GetWorld()); It; ++It)
 	{
 		AFLShip* Other = *It;
-		if (Other == this || Other->GetFName().Compare(GetFName()) < 0)
+		if (Other == this || Other->bDead || Other->GetFName().Compare(GetFName()) < 0)
 		{
 			continue;
 		}
@@ -208,7 +270,10 @@ void AFLShip::HandleCollisions()
 		{
 			Movement->ApplyCollision(R.DeltaVelocityA, R.PushA, R.ImpactSpeed);
 			Other->Movement->ApplyCollision(R.DeltaVelocityB, R.PushB, R.ImpactSpeed);
-			UE_LOG(LogFLShip, Display, TEXT("Kollision %s <-> %s: Aufprall %.0f cm/s, Eindringtiefe %.0f cm"), *GetName(), *Other->GetName(), R.ImpactSpeed, R.Penetration);
+			const double DamageA = FLDamage::Collision(R.ImpactSpeed, A.Mass, B.Mass, 0.4);
+			ApplyDamage(DamageA);
+			Other->ApplyDamage(FLDamage::Collision(R.ImpactSpeed, B.Mass, A.Mass, 0.4));
+			UE_LOG(LogFLShip, Display, TEXT("Kollision %s <-> %s: Aufprall %.0f cm/s, Eindringtiefe %.0f cm, Schaden %.0f"), *GetName(), *Other->GetName(), R.ImpactSpeed, R.Penetration, DamageA);
 		}
 	}
 }
@@ -239,6 +304,10 @@ bool AFLShip::ServerMoves_Validate(const TArray<FFLMove>& Moves)
 
 void AFLShip::ServerMoves_Implementation(const TArray<FFLMove>& Moves)
 {
+	if (bDead)
+	{
+		return; // zerstoert: keine Steuerung bis zum Neustart (Sequenzen laufen beim Client weiter)
+	}
 	for (const FFLMove& Move : Moves)
 	{
 		Movement->ServerApplyMove(Move); // bereits verarbeitete Sequenzen werden ignoriert

@@ -22,6 +22,14 @@ void UFLShipMovementComponent::ResetState(const FFLFlightState& NewState)
 	ApplyToActor();
 }
 
+void UFLShipMovementComponent::Teleport(const FFLFlightState& NewState)
+{
+	State = NewState;
+	RemoteTarget = NewState;
+	History = FFLMoveHistory(); // frueher gesendete Bewegungen beziehen sich auf den alten Zustand
+	ApplyToActor();
+}
+
 void UFLShipMovementComponent::ApplyToActor()
 {
 	if (AActor* Owner = GetOwner())

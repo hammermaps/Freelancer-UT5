@@ -35,17 +35,18 @@ CORR=$(cat $LOGS 2>/dev/null | grep "Rolle=2" | sed -E 's/.*Korrekturen=([0-9]+)
 REJ=$(grep "Rolle=3" "$SLOG" | sed -E 's/.*Abgelehnt=([0-9]+) .*/\1/' | sort -n | tail -1)
 DT=$(grep "Rolle=3" "$SLOG" | sed -E 's/.* dt=([0-9.]+) .*/\1/' | tail -20 | awk '{s+=$1;n++} END{ if(n) printf "%.4f", s/n; else print 0}')
 JOIN=$(grep -c "Join succeeded" "$SLOG")
+DEAD=$(grep -c "Zerstoert:" "$SLOG")
 COLL=$(grep -c "LogFLShip: Display: Kollision" "$SLOG")   # Zusammenstoesse (Server korrigiert die Clients, das ist erlaubt)
 ERR=$(cat "$SLOG" $LOGS 2>/dev/null | grep -c "LogOutputDevice: Error")
 echo "Clients gestartet=$N laufend=$CCOUNT Joins=$JOIN Besitzer-Zeilen=$OWN Fremde-Zeilen=$SIM"
 echo "Server: CPU=${SCPU}% RAM=${SRSS} MB mittlere Frame-Zeit=${DT} s (${DT}s -> $(awk "BEGIN{ if (${DT:-0}>0) printf \"%.0f\", 1/${DT}; else print 0}") FPS) abgelehnte Bewegungen max=${REJ:-n/a}"
 echo "Netz (Loopback, gesamt Server<->Clients): ${KBPS} KB/s = $(awk "BEGIN{printf \"%.1f\", $KBPS/$N}") KB/s je Client"
-echo "Kollisionen (Server)=$COLL"
+echo "Kollisionen (Server)=$COLL Zerstoert=$DEAD"
 echo "Clients: RAM je Client=${CRSS} MB, max. Vorhersagefehler=${MAXERR:-n/a} cm, max. Korrekturen je Client=${CORR:-n/a}, Fehlerzeilen=$ERR"
 OK=1
 [ "$JOIN" -ge "$N" ] || OK=0
 # ohne Kollisionen < 150 cm, mit Kollisionen (Server verschiebt Schiffe) < 1000 cm
-LIMIT=150; [ "$COLL" -gt 0 ] && LIMIT=1000
+LIMIT=150; [ "$COLL" -gt 0 ] && LIMIT=1000; [ "$DEAD" -gt 0 ] && LIMIT=1000000   # Neustarts teleportieren Schiffe
 [ -n "$MAXERR" ] && awk "BEGIN{exit !($MAXERR < $LIMIT)}" || OK=0
 [ "${REJ:-1}" = "0" ] || OK=0
 awk "BEGIN{exit !(${DT:-1} <= 0.04)}" || OK=0

@@ -290,9 +290,77 @@ bool FFLPredictionTest::RunTest(const FString& Parameters)
 #endif
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Flight/FLDamage.h"
+#include "Flight/FLShipMovementComponent.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLDamageTest, "Freelancer.Flight.Damage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLDamageTest::RunTest(const FString& Parameters)
+{
+	// Fighter (100 kg) rammt ein festes Objekt mit 80 m/s (8000 cm/s), Restitution 0.3: 0.5 * 0.004 * 0.91 * 0.5 * 100 * 6400 = 582.4
+	const double Ram = FLDamage::Collision(8000.0, 100.0, 0.0, 0.3);
+	TestTrue(*FString::Printf(TEXT("Schaden gegen festes Objekt (ist %.1f)"), Ram), FMath::IsNearlyEqual(Ram, 582.4, 1e-6));
+	TestTrue(TEXT("ca. die Haelfte von 1300 Trefferpunkten"), Ram > 0.35 * 1300.0 && Ram < 0.55 * 1300.0);
+	// Schiff gegen Schiff gleicher Masse: reduzierte Masse 50
+	TestTrue(TEXT("Schaden Schiff gegen Schiff"), FMath::IsNearlyEqual(FLDamage::Collision(8000.0, 100.0, 100.0, 0.4), 0.5 * 0.004 * 0.84 * 0.5 * 50.0 * 6400.0, 1e-6));
+	// Cruise-Ramming: 300 m/s ist rund 14-mal so schlimm (quadratisch) und zerstoert den Jaeger sicher
+	TestTrue(TEXT("quadratisch in der Geschwindigkeit"), FMath::IsNearlyEqual(FLDamage::Collision(30000.0, 100.0, 0.0, 0.3) / Ram, 14.0625, 1e-6));
+	TestTrue(TEXT("Cruise-Rammstoss zerstoert den Jaeger"), FLDamage::Collision(30000.0, 100.0, 0.0, 0.3) > 1300.0);
+	TestTrue(TEXT("leichter Kontakt (10 m/s) richtet kaum Schaden an"), FLDamage::Collision(1000.0, 100.0, 0.0, 0.3) < 0.05 * 1300.0);
+	TestEqual(TEXT("vollelastisch (e = 1): keine verlorene Energie"), FLDamage::Collision(8000.0, 100.0, 0.0, 1.0), 0.0);
+	// Schwerer Gegner: Schaden naehert sich dem Wert gegen ein festes Objekt
+	TestTrue(TEXT("sehr schwerer Gegner = fest"), FMath::IsNearlyEqual(FLDamage::Collision(8000.0, 100.0, 1.0e9, 0.3), FLDamage::Collision(8000.0, 100.0, 0.0, 0.3), 1.0));
+	// Skalierung: doppelte Geschwindigkeit = vierfacher Schaden
+	TestTrue(TEXT("quadratisch (Faktor 4)"), FMath::IsNearlyEqual(FLDamage::Collision(2000.0, 100.0, 0.0, 0.3) * 4.0, FLDamage::Collision(4000.0, 100.0, 0.0, 0.3), 1e-9));
+	// Schwelle
+	TestEqual(TEXT("langsamer als 1 m/s: kein Schaden"), FLDamage::Collision(99.0, 100.0, 0.0, 0.3), 0.0);
+	TestTrue(TEXT("genau an der Schwelle: Schaden"), FLDamage::Collision(100.0, 100.0, 0.0, 0.3) > 0.0);
+	TestEqual(TEXT("Masse 0 ergibt nichts"), FLDamage::Collision(5000.0, 0.0, 100.0, 0.3), 0.0);
+	// Faktor aus den Parametern
+	FFLDamageParams Half; Half.CollisionDamageFactor = 0.25;
+	TestTrue(TEXT("Faktor wirkt linear"), FMath::IsNearlyEqual(FLDamage::Collision(8000.0, 100.0, 0.0, 0.3, Half) * 2.0, 582.4, 1e-6));
+
+	// Trefferpunkte abziehen
+	double Hull = 1300.0;
+	TestEqual(TEXT("Schaden wird abgezogen"), FLDamage::Apply(Hull, 300.0), 300.0);
+	TestEqual(TEXT("Rest"), Hull, 1000.0);
+	TestEqual(TEXT("nicht unter 0: tatsaechlicher Abzug"), FLDamage::Apply(Hull, 5000.0), 1000.0);
+	TestEqual(TEXT("zerstoert"), Hull, 0.0);
+	TestEqual(TEXT("zerstoerte Schiffe nehmen keinen Schaden"), FLDamage::Apply(Hull, 100.0), 0.0);
+	double Other = 500.0;
+	TestEqual(TEXT("negativer Schaden heilt nicht"), FLDamage::Apply(Other, -50.0), 0.0);
+	TestEqual(TEXT("Trefferpunkte unveraendert"), Other, 500.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLTeleportTest, "Freelancer.Flight.Teleport",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLTeleportTest::RunTest(const FString& Parameters)
+{
+	// Teleport setzt den Zustand und verwirft den Verlauf, die Sequenznummern laufen weiter
+	UFLShipMovementComponent* Comp = NewObject<UFLShipMovementComponent>(GetTransientPackage());
+	FFLFlightState Target;
+	Target.Position = FVector(1, 2, 3);
+	Target.Velocity = FVector(4, 5, 6);
+	Comp->Teleport(Target);
+	TestTrue(TEXT("Zustand gesetzt"), Comp->GetState().Position == Target.Position && Comp->GetState().Velocity == Target.Velocity);
+	FFLMove M; M.Sequence = 500; M.Dt = 0.016f;
+	TestTrue(TEXT("Bewegung wird nach dem Teleport angewendet"), Comp->ServerApplyMove(M));
+	FFLMove Old; Old.Sequence = 400; Old.Dt = 0.016f;
+	TestFalse(TEXT("aeltere Sequenz wird abgelehnt (Sequenzen blieben erhalten)"), Comp->ServerApplyMove(Old));
+	Comp->ResetState(FFLFlightState());
+	TestTrue(TEXT("nach ResetState wieder Sequenz 1 moeglich"), Comp->ServerApplyMove(FFLMove{1, FFLFlightInput(), 0.016f}));
+	return true;
+}
+#endif
+
+#if WITH_DEV_AUTOMATION_TESTS
 #include "Data/FLSolarData.h"
 #include "Data/FLSystemData.h"
 #include "Flight/FLCollision.h"
+#include "Flight/FLShipMovementComponent.h"
 #include "Flight/FLStaticCollision.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLStaticCollisionTest, "Freelancer.Flight.StaticCollision",
