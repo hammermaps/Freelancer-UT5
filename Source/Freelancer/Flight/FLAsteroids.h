@@ -8,13 +8,13 @@
 
 class UFLAsteroidFieldData;
 
-/** Zone (Kugel, Ellipsoid, Box) mit Lage; Zylinder/Ring werden nicht unterstuetzt (Contains = false). */
+/** Zone (Kugel, Ellipsoid, Box, Zylinder) mit Lage; Ringe kommen in den Daten nicht vor und werden nicht unterstuetzt (Contains = false). */
 struct FREELANCER_API FFLZoneShape
 {
 	EFLZoneShape Shape = EFLZoneShape::Unknown;
 	FVector Center = FVector::ZeroVector;
 	FQuat Rotation = FQuat::Identity;
-	FVector Size = FVector::ZeroVector; // Kugel: Radius = Size.X; Ellipsoid: Halbachsen; Box: volle Kantenlaengen (alles cm, Unreal-Achsen)
+	FVector Size = FVector::ZeroVector; // Kugel: Radius = Size.X; Ellipsoid: Halbachsen; Box: volle Kantenlaengen; Zylinder: Radius = Size.X, Hoehe = Size.Z (alles cm, Unreal-Achsen)
 
 	bool Contains(const FVector& Point) const;
 };

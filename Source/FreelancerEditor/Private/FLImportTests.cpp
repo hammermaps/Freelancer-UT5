@@ -142,13 +142,14 @@ bool FFLSystemImportTest::RunTest(const FString& Parameters)
 		"[Object]\nnickname = Li01_01\nArchetype = planet_x\npos = 1000, 200, -3000\nrotate = 0, 90, 0\nbase = Li01_01_Base\nids_name = 7\n"
 		"[Object]\nnickname = Li01_to_Li02\nArchetype = jumpgate\npos = 0, 0, 0\ngoto = Li02, Li02_to_Li01, gate_tunnel\n"
 		"[zone]\nnickname = Zone_a\nshape = SPHERE\npos = 0, 0, 0\nsize = 4100\n"
-		"[zone]\nnickname = Zone_b\nshape = BOX\npos = 10, 0, 0\nsize = 100, 200, 300\n";
+		"[zone]\nnickname = Zone_b\nshape = BOX\npos = 10, 0, 0\nsize = 100, 200, 300\n"
+		"[zone]\nnickname = Zone_c\nshape = CYLINDER\npos = 0, 0, 0\nsize = 750, 18627\n";
 	const fl::IniFile UIni = fl::IniFile::Parse(Universe), SIni = fl::IniFile::Parse(System);
 	const auto Sys = fl::ParseRecordsOfType(UIni, "system");
 	const auto Objects = fl::ParseRecordsOfType(SIni, "Object");
 	const auto Zones = fl::ParseRecordsOfType(SIni, "zone");
 	const auto Info = fl::ParseRecordsOfType(fl::IniFile::Parse("[SystemInfo]\nnickname = Li01\nnavmapscale = 1.5\n"), "SystemInfo");
-	if (Sys.size() != 1 || Objects.size() != 2 || Zones.size() != 2 || Info.size() != 1)
+	if (Sys.size() != 1 || Objects.size() != 2 || Zones.size() != 3 || Info.size() != 1)
 	{
 		AddError(TEXT("Parser lieferte unerwartete Anzahl"));
 		return false;
@@ -167,11 +168,13 @@ bool FFLSystemImportTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Drehung gesetzt"), D->Objects[0].Rotation.Equals(FQuat::Identity, 0.01));
 	TestEqual(TEXT("Sprungziel System"), D->Objects[1].GotoSystem, FName("Li02"));
 	TestEqual(TEXT("Sprungziel Objekt"), D->Objects[1].GotoObject, FName("Li02_to_Li01"));
-	TestEqual(TEXT("Zonen"), D->Zones.Num(), 2);
+	TestEqual(TEXT("Zonen"), D->Zones.Num(), 3);
 	TestEqual(TEXT("Kugel Form"), D->Zones[0].Shape, EFLZoneShape::Sphere);
 	TestEqual(TEXT("Kugel Radius in cm"), D->Zones[0].Size.X, 410000.0);
 	TestEqual(TEXT("Box Form"), D->Zones[1].Shape, EFLZoneShape::Box);
 	TestEqual(TEXT("Box z-Achse (Original z=300 -> Unreal x)"), D->Zones[1].Size.X, 30000.0);
+	TestEqual(TEXT("Zylinder Form"), D->Zones[2].Shape, EFLZoneShape::Cylinder);
+	TestTrue(TEXT("Zylinder: Radius 75000 cm in X und Y, Hoehe 1862700 cm in Z"), FMath::IsNearlyEqual(D->Zones[2].Size.X, 75000.0) && FMath::IsNearlyEqual(D->Zones[2].Size.Y, 75000.0) && FMath::IsNearlyEqual(D->Zones[2].Size.Z, 1862700.0));
 	TestEqual(TEXT("Info"), D->Info.FindRef(FName("navmapscale")), FString(TEXT("1.5")));
 	TestEqual(TEXT("Basen"), D->Bases.Num(), 1);
 	TestEqual(TEXT("Asteroidenfelder"), D->AsteroidFields.Num(), 2);

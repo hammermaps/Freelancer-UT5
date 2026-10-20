@@ -35,9 +35,22 @@ bool FFLAsteroidZoneTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Box innen (halbe Kantenlaenge)"), Box.Contains(FVector(499, 199, 99)));
 	TestFalse(TEXT("Box aussen"), Box.Contains(FVector(501, 0, 0)));
 
-	FFLZoneShape Unknown;
-	Unknown.Shape = EFLZoneShape::Cylinder; Unknown.Size = FVector(1000, 1000, 1000);
-	TestFalse(TEXT("Zylinder wird nicht unterstuetzt"), Unknown.Contains(FVector::ZeroVector));
+	// Zylinder (Handelsrouten): Radius 750, Hoehe 18000, Achse = lokale Z-Achse
+	FFLZoneShape Cyl;
+	Cyl.Shape = EFLZoneShape::Cylinder; Cyl.Center = FVector(100, 0, 0); Cyl.Size = FVector(750, 750, 18000);
+	TestTrue(TEXT("Zylinder: auf der Achse weit oben"), Cyl.Contains(FVector(100, 0, 8900)));
+	TestFalse(TEXT("Zylinder: ueber dem Ende"), Cyl.Contains(FVector(100, 0, 9100)));
+	TestTrue(TEXT("Zylinder: am Rand des Radius"), Cyl.Contains(FVector(100 + 740, 0, 0)));
+	TestFalse(TEXT("Zylinder: ausserhalb des Radius"), Cyl.Contains(FVector(100 + 760, 0, 0)));
+	TestFalse(TEXT("Zylinder: Ecke ausserhalb (Radius ueberschritten)"), Cyl.Contains(FVector(100 + 600, 600, 0)));
+	FFLZoneShape CylTilt = Cyl;
+	CylTilt.Rotation = FRotator(0, 0, 90).Quaternion();    // Achse kippt in die Y-Richtung
+	TestTrue(TEXT("gekippter Zylinder: Achse zeigt nach Y"), CylTilt.Contains(FVector(100, 8900, 0)) || CylTilt.Contains(FVector(100, -8900, 0)));
+	TestFalse(TEXT("gekippter Zylinder: Z ist jetzt kurz"), CylTilt.Contains(FVector(100, 0, 8900)));
+
+	FFLZoneShape RingZone;
+	RingZone.Shape = EFLZoneShape::Ring; RingZone.Size = FVector(1000, 1000, 1000);
+	TestFalse(TEXT("Ring wird nicht unterstuetzt (kommt in den Daten nicht vor)"), RingZone.Contains(FVector::ZeroVector));
 
 	// Aus importierten Zonendaten
 	FFLSystemZone Z; Z.Shape = EFLZoneShape::Sphere; Z.Position = FVector(5, 6, 7); Z.Size = FVector(10, 10, 10);

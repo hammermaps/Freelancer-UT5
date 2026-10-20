@@ -360,6 +360,11 @@ void UFLImportCommandlet::FillSystemData(UFLSystemData* Data, const fl::FlRecord
 			// Groesse in Originalachsen (x, y, z) -> Unreal-Achsen, Meter -> cm
 			Out.Size = FVector(FMath::Abs(S[2]), FMath::Abs(S[0]), FMath::Abs(S[1])) * 100.0;
 		}
+		else if (S.size() == 2 && Out.Shape == EFLZoneShape::Cylinder)
+		{
+			// Zylinder: size = Radius, Hoehe; die Achse ist die lokale Hochachse (Original y = Unreal z) -> Size = (Radius, Radius, Hoehe)
+			Out.Size = FVector(FMath::Abs(S[0]), FMath::Abs(S[0]), FMath::Abs(S[1])) * 100.0;
+		}
 		FillProperties(Out.Properties, Z);
 		Data->Zones.Add(MoveTemp(Out));
 	}

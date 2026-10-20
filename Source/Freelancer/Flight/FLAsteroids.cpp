@@ -22,6 +22,9 @@ bool FFLZoneShape::Contains(const FVector& Point) const
 	}
 	case EFLZoneShape::Box:
 		return FMath::Abs(Local.X) <= Size.X * 0.5 && FMath::Abs(Local.Y) <= Size.Y * 0.5 && FMath::Abs(Local.Z) <= Size.Z * 0.5;
+	case EFLZoneShape::Cylinder:
+		// Achse = lokale Z-Achse (Original: Y), Radius = Size.X, volle Hoehe = Size.Z, mittig um das Zentrum
+		return FMath::Abs(Local.Z) <= Size.Z * 0.5 && Local.X * Local.X + Local.Y * Local.Y <= Size.X * Size.X;
 	default:
 		return false;
 	}
