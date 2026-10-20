@@ -14,6 +14,7 @@
 #include "EngineUtils.h"
 #include "Flight/FLCollision.h"
 #include "Flight/FLShipMovementComponent.h"
+#include "Flight/FLStaticCollision.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/App.h"
@@ -164,6 +165,24 @@ void AFLShip::OnLook(const FInputActionValue& V)
 
 void AFLShip::HandleCollisions()
 {
+	// Feste Objekte (Planeten, Stationen)
+	if (const UFLStaticCollisionSubsystem* Statics = GetWorld()->GetSubsystem<UFLStaticCollisionSubsystem>())
+	{
+		TArray<const FFLStaticSphere*> Hits;
+		const FFLFlightState& S = Movement->GetState();
+		Statics->Query(S.Position, CollisionRadius, Hits);
+		for (const FFLStaticSphere* Hit : Hits)
+		{
+			const FFLCollisionBody Body{Movement->GetState().Position, Movement->GetState().Velocity, Movement->Params.Mass, (double)CollisionRadius};
+			const FFLCollisionResult R = FLCollision::ResolveStatic(Body, *Hit, 0.3);
+			if (R.bHit)
+			{
+				Movement->ApplyCollision(R.DeltaVelocityA, R.PushA, R.ImpactSpeed);
+				UE_LOG(LogFLShip, Display, TEXT("Kollision %s <-> fest %s: Aufprall %.0f cm/s"), *GetName(), *Hit->Id.ToString(), R.ImpactSpeed);
+			}
+		}
+	}
+
 	// Nur der Server entscheidet; jedes Paar einmal (Reihenfolge nach Objektname)
 	const FFLFlightState& MyState = Movement->GetState();
 	for (TActorIterator<AFLShip> It(GetWorld()); It; ++It)

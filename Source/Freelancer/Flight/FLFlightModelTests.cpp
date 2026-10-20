@@ -290,7 +290,82 @@ bool FFLPredictionTest::RunTest(const FString& Parameters)
 #endif
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Data/FLSolarData.h"
+#include "Data/FLSystemData.h"
 #include "Flight/FLCollision.h"
+#include "Flight/FLStaticCollision.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLStaticCollisionTest, "Freelancer.Flight.StaticCollision",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLStaticCollisionTest::RunTest(const FString& Parameters)
+{
+	const FFLStaticSphere Planet{FName("Planet"), FVector(10000, 0, 0), 4000.0};
+	// Schiff fliegt mit 1000 cm/s in die Kugel (Mittelpunktabstand 4300 < 4000 + 500)
+	FFLCollisionBody Ship{FVector(5700, 0, 0), FVector(1000, 0, 0), 100.0, 500.0};
+	FFLCollisionResult R = FLCollision::ResolveStatic(Ship, Planet, 0.3);
+	TestTrue(TEXT("Kontakt"), R.bHit);
+	TestTrue(TEXT("Eindringtiefe 200 cm"), FMath::IsNearlyEqual(R.Penetration, 200.0, 1e-9));
+	TestTrue(TEXT("Schiff wird aus der Kugel geschoben (nach -X)"), FMath::IsNearlyEqual(R.PushA.X, -200.0, 1e-9));
+	TestTrue(TEXT("Aufprallgeschwindigkeit 1000"), FMath::IsNearlyEqual(R.ImpactSpeed, 1000.0, 1e-9));
+	TestTrue(TEXT("Geschwindigkeit wird mit Restitution 0.3 zurueckgeworfen (1000 -> -300)"), FMath::IsNearlyEqual((Ship.Velocity + R.DeltaVelocityA).X, -300.0, 1e-6));
+	TestTrue(TEXT("feste Kugel bekommt nichts"), R.DeltaVelocityB.IsNearlyZero() && R.PushB.IsNearlyZero());
+
+	// Tangential vorbeigleiten: Normalkomponente 0, Tangentialkomponente bleibt
+	Ship.Position = FVector(10000, 4300, 0);
+	Ship.Velocity = FVector(0, 0, 800);
+	R = FLCollision::ResolveStatic(Ship, Planet, 0.3);
+	TestTrue(TEXT("tangential: kein Aufprall"), R.bHit && R.ImpactSpeed == 0.0 && R.DeltaVelocityA.IsNearlyZero());
+	TestTrue(TEXT("tangential: aus der Kugel geschoben (+Y)"), R.PushA.Y > 199.0);
+	// Weg von der Kugel
+	Ship.Velocity = FVector(0, 500, 0);
+	R = FLCollision::ResolveStatic(Ship, Planet, 0.3);
+	TestTrue(TEXT("auseinanderlaufend: nur Verschiebung"), R.bHit && R.DeltaVelocityA.IsNearlyZero() && !R.PushA.IsNearlyZero());
+	// Kein Kontakt
+	Ship.Position = FVector(0, 0, 0);
+	TestFalse(TEXT("kein Kontakt"), FLCollision::ResolveStatic(Ship, Planet, 0.3).bHit);
+	// Mittelpunkt auf Mittelpunkt: kein NaN
+	Ship.Position = Planet.Position;
+	R = FLCollision::ResolveStatic(Ship, Planet, 0.3);
+	TestTrue(TEXT("Mittelpunkte gleich: kein NaN"), R.bHit && !R.PushA.ContainsNaN());
+
+	// Subsystem-Abfrage
+	UWorld* None = nullptr;
+	(void)None;
+	UFLStaticCollisionSubsystem* Sub = NewObject<UFLStaticCollisionSubsystem>(GetTransientPackage());
+	Sub->AddSphere(Planet);
+	Sub->AddSphere(FFLStaticSphere{FName("Fern"), FVector(1.0e6, 0, 0), 100.0});
+	TArray<const FFLStaticSphere*> Hits;
+	Sub->Query(FVector(5700, 0, 0), 500.0, Hits);
+	TestEqual(TEXT("Abfrage findet nur die nahe Kugel"), Hits.Num(), 1);
+	Hits.Reset();
+	Sub->Query(FVector(0, 5.0e6, 0), 500.0, Hits);
+	TestEqual(TEXT("Abfrage weit weg: nichts"), Hits.Num(), 0);
+
+	// Kugeln aus Systemdaten: Planet ueber Solar-Radius, Objekt ohne Solar/Radius entfaellt
+	UFLSystemData* System = NewObject<UFLSystemData>(GetTransientPackage());
+	FFLSystemObject P1; P1.Nickname = "Li01_01"; P1.Archetype = "planet_x"; P1.Position = FVector(300000, 100000, 20000);
+	FFLSystemObject P2; P2.Nickname = "Zeiger"; P2.Archetype = "nav_buoy";                // Solar ohne Radius und Modell
+	FFLSystemObject P3; P3.Nickname = "Unbekannt"; P3.Archetype = "gibt_es_nicht";
+	FFLSystemObject P4; P4.Nickname = "OhneArchetyp";
+	System->Objects = {P1, P2, P3, P4};
+	UFLSolarData* PlanetData = NewObject<UFLSolarData>(GetTransientPackage()); PlanetData->Radius = 400000.f;
+	UFLSolarData* Buoy = NewObject<UFLSolarData>(GetTransientPackage());
+	const TArray<FFLStaticSphere> Built = FLCollision::BuildStaticSpheres(*System, [&](FName Archetype) -> const UFLSolarData*
+	{
+		if (Archetype == FName("planet_x")) { return PlanetData; }
+		if (Archetype == FName("nav_buoy")) { return Buoy; }
+		return nullptr;
+	});
+	TestEqual(TEXT("nur der Planet wird zur Kugel"), Built.Num(), 1);
+	if (Built.Num() == 1)
+	{
+		TestEqual(TEXT("Radius aus dem Solar"), Built[0].Radius, 400000.0);
+		TestTrue(TEXT("Position aus dem System"), Built[0].Position.Equals(FVector(300000, 100000, 20000)));
+		TestEqual(TEXT("Id"), Built[0].Id, FName("Li01_01"));
+	}
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLCollisionTest, "Freelancer.Flight.Collision",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

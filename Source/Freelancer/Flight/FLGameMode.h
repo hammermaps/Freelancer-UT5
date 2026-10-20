@@ -28,7 +28,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ship")
 	double SpawnGridSpacing = 4000.0;
 
+	/** System, dessen feste Objekte (Planeten, Stationen) auf dem Server als Kollisionskugeln registriert werden; leer = keins. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "System")
+	FName DefaultSystem;
+
+	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
+	virtual void StartPlay() override;
 	virtual APawn* SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform) override;
 private:
 	int32 SpawnCounter = 0;
+	FVector SpawnOffset = FVector::ZeroVector; // -FLSpawnOffset=x,y,z (cm): Startregion verschieben (Tests ausserhalb von Sonne/Objekten)
 };

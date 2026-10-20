@@ -38,3 +38,32 @@ namespace FLCollision
 	/** Huellkugel eines Modells: umfasst alle Teile (Teilposition + Radius der Mesh-Grenzen); ohne Modell/Meshes DefaultRadius. */
 	FREELANCER_API double ModelRadius(const UFLModelData* Model, double DefaultRadius = 500.0);
 }
+
+/** Unbewegliche Kugel (Planet, Station, Sprungtor, Asteroid ...). */
+struct FREELANCER_API FFLStaticSphere
+{
+	FName Id;
+	FVector Position = FVector::ZeroVector;
+	double Radius = 0.0;
+};
+
+namespace FLCollision
+{
+	/**
+	 * Bewegliche Kugel gegen unbewegliche: das Schiff wird aus der Kugel geschoben, die Normalkomponente der Geschwindigkeit
+	 * wird mit Restitution zurueckgeworfen. Ergebnisfelder wie bei ResolveSpheres (A = Schiff, B = fest, DeltaVelocityB = 0).
+	 */
+	FREELANCER_API FFLCollisionResult ResolveStatic(const FFLCollisionBody& Ship, const FFLStaticSphere& Fixed, double Restitution = 0.3);
+}
+
+class UFLSystemData;
+class UFLSolarData;
+
+namespace FLCollision
+{
+	/**
+	 * Aus den Objekten eines Systems die festen Kollisionskugeln bilden. Radius: Planeten aus dem Solar (Radius > 0),
+	 * sonst Modellradius (SolarLookup liefert das Solar zum Archetyp); Objekte ohne Radius entfallen.
+	 */
+	FREELANCER_API TArray<FFLStaticSphere> BuildStaticSpheres(const UFLSystemData& System, TFunctionRef<const UFLSolarData*(FName)> SolarLookup);
+}

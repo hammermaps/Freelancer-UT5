@@ -3,6 +3,8 @@
 #include "Flight/FLCollision.h"
 
 #include "Data/FLModelData.h"
+#include "Data/FLSolarData.h"
+#include "Data/FLSystemData.h"
 #include "Engine/StaticMesh.h"
 
 FFLCollisionResult FLCollision::ResolveSpheres(const FFLCollisionBody& A, const FFLCollisionBody& B, double Restitution)
@@ -62,4 +64,56 @@ double FLCollision::ModelRadius(const UFLModelData* Model, double DefaultRadius)
 		}
 	}
 	return bAny ? Radius : DefaultRadius;
+}
+
+FFLCollisionResult FLCollision::ResolveStatic(const FFLCollisionBody& Ship, const FFLStaticSphere& Fixed, double Restitution)
+{
+	FFLCollisionResult R;
+	const FVector Delta = Ship.Position - Fixed.Position; // von der festen Kugel zum Schiff
+	const double Dist = Delta.Size();
+	const double Penetration = Ship.Radius + Fixed.Radius - Dist;
+	if (Penetration <= 0.0)
+	{
+		return R;
+	}
+	R.bHit = true;
+	R.Penetration = Penetration;
+	const FVector OutNormal = Dist > KINDA_SMALL_NUMBER ? Delta / Dist : FVector::UpVector; // zeigt aus der Kugel heraus
+	R.Normal = -OutNormal;                          // von A (Schiff) nach B (fest)
+	R.PushA = OutNormal * Penetration;
+	const double Into = FVector::DotProduct(Ship.Velocity, -OutNormal); // > 0: Schiff fliegt in die Kugel hinein
+	if (Into > 0.0)
+	{
+		R.ImpactSpeed = Into;
+		R.DeltaVelocityA = OutNormal * ((1.0 + FMath::Clamp(Restitution, 0.0, 1.0)) * Into);
+	}
+	return R;
+}
+
+TArray<FFLStaticSphere> FLCollision::BuildStaticSpheres(const UFLSystemData& System, TFunctionRef<const UFLSolarData*(FName)> SolarLookup)
+{
+	TArray<FFLStaticSphere> Out;
+	for (const FFLSystemObject& Obj : System.Objects)
+	{
+		const UFLSolarData* Solar = Obj.Archetype.IsNone() ? nullptr : SolarLookup(Obj.Archetype);
+		if (!Solar)
+		{
+			continue;
+		}
+		double Radius = Solar->Radius;                                  // Planeten
+		if (Radius <= 0.0 && !Solar->Model.IsNull())
+		{
+			Radius = ModelRadius(Solar->Model.LoadSynchronous(), 0.0);   // Stationen u. a.
+		}
+		if (Radius <= 0.0)
+		{
+			continue;
+		}
+		FFLStaticSphere S;
+		S.Id = Obj.Nickname;
+		S.Position = Obj.Position;
+		S.Radius = Radius;
+		Out.Add(S);
+	}
+	return Out;
 }
