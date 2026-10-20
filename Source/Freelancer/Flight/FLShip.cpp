@@ -122,6 +122,7 @@ void AFLShip::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 		EIC->BindAction(Actions.Roll, ETriggerEvent::Triggered, this, &AFLShip::OnRoll);
 		EIC->BindAction(Actions.Roll, ETriggerEvent::Completed, this, &AFLShip::OnRoll);
 		EIC->BindAction(Actions.Look, ETriggerEvent::Triggered, this, &AFLShip::OnLook);
+		EIC->BindAction(Actions.Cruise, ETriggerEvent::Started, this, &AFLShip::OnCruiseToggle);
 	}
 }
 
@@ -149,6 +150,7 @@ void AFLShip::OnThrottle(const FInputActionValue& V) { Raw.Throttle = V.Get<floa
 void AFLShip::OnStrafeRight(const FInputActionValue& V) { Raw.StrafeRight = V.Get<float>(); }
 void AFLShip::OnStrafeUp(const FInputActionValue& V) { Raw.StrafeUp = V.Get<float>(); }
 void AFLShip::OnRoll(const FInputActionValue& V) { Raw.Roll = V.Get<float>(); }
+void AFLShip::OnCruiseToggle(const FInputActionValue& V) { Raw.bCruise = !Raw.bCruise; }
 void AFLShip::OnLook(const FInputActionValue& V)
 {
 	// Maus liefert ein Delta je Frame (wird in Tick verbraucht), Stick einen Wert -1..1 (bleibt stehen, bis neu gesetzt)
@@ -229,6 +231,7 @@ void AFLShip::Tick(float DeltaSeconds)
 		In.Yaw = FMath::Sin(BotTime * 0.8f);
 		In.Pitch = 0.5f * FMath::Sin(BotTime * 0.5f + 1.f);
 		In.Roll = 0.3f * FMath::Cos(BotTime * 0.7f);
+		In.bCruise = FMath::Fmod(BotTime, 40.f) > 15.f && FMath::Fmod(BotTime, 40.f) < 30.f; // Cruise-Abschnitt im Wechsel (Netzwerk-Test mit Zustandsautomat)
 		Movement->SetInput(In);
 	}
 

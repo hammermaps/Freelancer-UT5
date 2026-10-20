@@ -84,6 +84,7 @@ private:
 	void OnStrafeUp(const struct FInputActionValue& V);
 	void OnRoll(const struct FInputActionValue& V);
 	void OnLook(const struct FInputActionValue& V);
+	void OnCruiseToggle(const struct FInputActionValue& V);
 
 	bool bShotScheduled = false;
 	bool bBot = false;

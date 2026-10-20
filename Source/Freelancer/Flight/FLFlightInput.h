@@ -17,6 +17,7 @@ struct FREELANCER_API FFLRawInput
 	float Roll = 0.f;          // -1..1
 	FVector2D Look = FVector2D::ZeroVector; // Maus-Delta oder Stick: x = Gieren, y = Nicken (+ = Nase hoch)
 	bool bLookIsDelta = true;  // true: Maus (Delta pro Frame, wird skaliert), false: Stick (-1..1)
+	bool bCruise = false;      // Umschalter, bleibt gesetzt bis erneut gedrueckt
 };
 
 struct FREELANCER_API FFLInputSettings
@@ -43,6 +44,7 @@ struct FREELANCER_API FFLInputActions
 	TObjectPtr<UInputAction> StrafeUp;
 	TObjectPtr<UInputAction> Roll;
 	TObjectPtr<UInputAction> Look;
+	TObjectPtr<UInputAction> Cruise;
 	TObjectPtr<UInputMappingContext> Mapping;
 };
 
@@ -50,7 +52,7 @@ namespace FLInput
 {
 	/**
 	 * Erzeugt Aktionen und Belegung. Tastatur/Maus: W/S Schub, A/D seitwaerts, Leertaste/Strg hoch/runter, Q/E Rollen, Maus Steuern.
-	 * Gamepad: Trigger Schub, linker Stick seitwaerts/hoch, rechter Stick Steuern, Schultertasten Rollen.
+	 * Gamepad: Trigger Schub, linker Stick seitwaerts/hoch, rechter Stick Steuern, Schultertasten Rollen. C bzw. obere Gamepad-Taste: Cruise umschalten.
 	 */
 	FREELANCER_API FFLInputActions CreateDefaultActions(UObject* Outer);
 }

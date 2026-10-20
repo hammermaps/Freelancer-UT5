@@ -50,6 +50,34 @@ struct FREELANCER_API FFLFlightParams
 	/** rotation_inertia: x = Pitch, y = Yaw, z = Roll */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector RotationInertia = FVector(2800.0, 2800.0, 1000.0);
+
+	/** Reisegeschwindigkeit in m/s (cruise_speed des Triebwerks; im Original fest 300) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	double CruiseSpeed = 300.0;
+
+	/** Aufladezeit bis der Cruise greift (cruise_charge_time) in s */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	double CruiseChargeTime = 5.0;
+
+	/** Zeit, in der die Reisegeschwindigkeit nach dem Aufladen erreicht wird (s) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	double CruiseAccelTime = 5.0;
+
+	/** Faktor auf Drehmomente im Cruise (vorlaeufiger Wert, per Reverse Engineering zu pruefen) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	double CruiseTurnFactor = 0.25;
+
+	/** Sperrzeit nach einer Stoerung (Treffer): CRUISE_DISRUPT_TIME aus constants.ini */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	double CruiseDisruptTime = 5.0;
+};
+
+UENUM(BlueprintType)
+enum class EFLCruisePhase : uint8
+{
+	Off,
+	Charging,
+	Active
 };
 
 USTRUCT(BlueprintType)
@@ -81,6 +109,10 @@ struct FREELANCER_API FFLFlightInput
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float Roll = 0.f;
 
+	/** Cruise gewuenscht (Umschalter wird im Client gehalten) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bCruise = false;
+
 	/** Werte auf -1..1 begrenzen (Server-Validierung: Clients duerfen keine staerkeren Eingaben schicken) */
 	FFLFlightInput Clamped() const;
 };
@@ -103,12 +135,26 @@ struct FREELANCER_API FFLFlightState
 	/** Lokale Winkelgeschwindigkeit in rad/s: x = Pitch, y = Yaw, z = Roll */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector AngularVelocity = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	EFLCruisePhase CruisePhase = EFLCruisePhase::Off;
+
+	/** Charging: bisher aufgeladene Zeit; Active: Zeit seit Aktivierung (fuer die Beschleunigungsrampe) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float CruiseTimer = 0.f;
+
+	/** Verbleibende Sperrzeit nach Stoerung (s); solange > 0 ist Cruise nicht moeglich */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float CruiseDisruptRemaining = 0.f;
 };
 
 namespace FLFlight
 {
 	/** Ein Simulationsschritt (Dt in Sekunden, > 0). Exakte Loesung der gedaempften Bewegung: stabil fuer jedes Dt. */
 	FREELANCER_API FFLFlightState Step(const FFLFlightState& State, const FFLFlightInput& Input, const FFLFlightParams& Params, double Dt);
+
+	/** Cruise stoeren (z. B. bei Treffer): beendet den Cruise und sperrt ihn fuer CruiseDisruptTime. */
+	FREELANCER_API void DisruptCruise(FFLFlightState& State, const FFLFlightParams& Params);
 
 	/** Endgeschwindigkeit bei vollem Schub vorwaerts in cm/s */
 	FREELANCER_API double TerminalSpeed(const FFLFlightParams& Params);

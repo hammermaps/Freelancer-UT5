@@ -290,6 +290,88 @@ bool FFLPredictionTest::RunTest(const FString& Parameters)
 #endif
 
 #if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLFlightCruiseTest, "Freelancer.Flight.Cruise",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLFlightCruiseTest::RunTest(const FString& Parameters)
+{
+	const FFLFlightParams P = FighterParams();
+	const double Dt = 1.0 / 60.0;
+	FFLFlightInput Cruise;
+	Cruise.bCruise = true;
+	Cruise.Throttle = 1.f;
+
+	// Aufladen: 4.9 s lang weiter normales Flugverhalten (80 m/s), Phase Charging
+	FFLFlightState S = Run(FFLFlightState(), Cruise, P, 4.9, Dt);
+	TestEqual(TEXT("Phase Aufladen"), S.CruisePhase, EFLCruisePhase::Charging);
+	TestTrue(*FString::Printf(TEXT("beim Aufladen nur Normaltempo (ist %.1f m/s)"), S.Velocity.X / 100.0), S.Velocity.X < 8100.0);
+
+	// Nach der Aufladezeit wird der Cruise aktiv und beschleunigt ueber CruiseAccelTime auf 300 m/s
+	S = Run(S, Cruise, P, 0.3, Dt);
+	TestEqual(TEXT("Phase aktiv"), S.CruisePhase, EFLCruisePhase::Active);
+	S = Run(S, Cruise, P, P.CruiseAccelTime + 1.5, Dt);
+	TestTrue(*FString::Printf(TEXT("Reisegeschwindigkeit ~300 m/s (ist %.1f)"), S.Velocity.X / 100.0), FMath::IsNearlyEqual(S.Velocity.X, 30000.0, 300.0));
+
+	// Schubregler wirkt im Cruise nicht
+	FFLFlightInput Reverse = Cruise;
+	Reverse.Throttle = -1.f;
+	FFLFlightState Held = Run(S, Reverse, P, 2.0, Dt);
+	TestTrue(TEXT("Schubregler wird im Cruise ignoriert"), FMath::IsNearlyEqual(Held.Velocity.X, 30000.0, 300.0));
+
+	// Lenkung im Cruise gedaempft: Endwinkelgeschwindigkeit = Faktor * Normalwert
+	FFLFlightInput Pitch = Cruise;
+	Pitch.Pitch = 1.f;
+	const FFLFlightState Turning = Run(S, Pitch, P, 4.0, Dt);
+	TestTrue(*FString::Printf(TEXT("gedaempfte Lenkung im Cruise (ist %.3f rad/s)"), Turning.AngularVelocity.X),
+		FMath::IsNearlyEqual(Turning.AngularVelocity.X, 1.6 * P.CruiseTurnFactor, 0.02));
+
+	// Abschalten: Geschwindigkeit faellt auf Normalwerte
+	FFLFlightInput Off;
+	Off.Throttle = 1.f;
+	const FFLFlightState Slowed = Run(S, Off, P, 3.0, Dt);
+	TestEqual(TEXT("Cruise aus"), Slowed.CruisePhase, EFLCruisePhase::Off);
+	TestTrue(*FString::Printf(TEXT("zurueck auf Normaltempo (ist %.1f m/s)"), Slowed.Velocity.X / 100.0), Slowed.Velocity.X < 8100.0 && Slowed.Velocity.X > 7900.0);
+
+	// Abbruch waehrend des Aufladens setzt zurueck: danach wieder volle Aufladezeit
+	FFLFlightState Charging = Run(FFLFlightState(), Cruise, P, 3.0, Dt);
+	Charging = Run(Charging, Off, P, 0.5, Dt);
+	TestEqual(TEXT("Abbruch -> aus"), Charging.CruisePhase, EFLCruisePhase::Off);
+	Charging = Run(Charging, Cruise, P, 3.0, Dt);
+	TestEqual(TEXT("neu aufladen: nach 3 s noch nicht aktiv"), Charging.CruisePhase, EFLCruisePhase::Charging);
+
+	// Stoerung (Treffer): Cruise endet und ist fuer CruiseDisruptTime gesperrt
+	FFLFlightState Hit = S;
+	FLFlight::DisruptCruise(Hit, P);
+	TestEqual(TEXT("Stoerung beendet Cruise"), Hit.CruisePhase, EFLCruisePhase::Off);
+	FFLFlightState Locked = Run(Hit, Cruise, P, 4.0, Dt);
+	TestEqual(TEXT("gesperrt (4 s)"), Locked.CruisePhase, EFLCruisePhase::Off);
+	Locked = Run(Locked, Cruise, P, 2.0, Dt);
+	TestEqual(TEXT("nach der Sperre laedt er wieder auf"), Locked.CruisePhase, EFLCruisePhase::Charging);
+
+	// Determinismus und Wiederholung (Vorhersage) mit Cruise
+	FFLMoveHistory History;
+	FFLFlightState Client, Server;
+	for (uint32 Seq = 1; Seq <= 1200; ++Seq)
+	{
+		FFLFlightInput In = Cruise;
+		In.Yaw = 0.2f;
+		FFLMove M{Seq, In, (float)Dt};
+		History.Add(M);
+		Client = FLFlight::Step(Client, In, P, M.Dt);
+		if (Seq == 1000) { Server = Client; History.Acknowledge(1000); }   // 200 offene Bewegungen < MaxMoves (256)
+	}
+	const FFLFlightState Replay = History.Replay(Server, P);
+	TestTrue(TEXT("Wiederholung mit Cruise-Zustand ist bitgleich"), Replay.Position == Client.Position && Replay.CruisePhase == Client.CruisePhase && Replay.CruiseTimer == Client.CruiseTimer);
+
+	// Parameter aus Triebwerksdaten
+	UFLEquipmentData* Engine = NewObject<UFLEquipmentData>(GetTransientPackage());
+	Engine->Properties.Add("cruise_charge_time", TEXT("7"));
+	TestEqual(TEXT("cruise_charge_time aus den Daten"), FLFlight::MakeParams(nullptr, Engine).CruiseChargeTime, 7.0);
+	return true;
+}
+#endif
+
+#if WITH_DEV_AUTOMATION_TESTS
 #include "EnhancedInput/Public/InputAction.h"
 #include "EnhancedInput/Public/InputMappingContext.h"
 #include "Flight/FLFlightInput.h"
@@ -335,6 +417,11 @@ bool FFLFlightInputTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Stick in Totzone"), In.Yaw, 0.f);
 	TestEqual(TEXT("Stick voll"), In.Pitch, 1.f);
 
+	// Cruise-Umschalter wird durchgereicht
+	FFLRawInput CruiseRaw;
+	CruiseRaw.bCruise = true;
+	TestTrue(TEXT("Cruise in der Eingabe"), FLInput::Compose(CruiseRaw, S).bCruise);
+
 	// Nicken umkehren
 	FFLInputSettings Inverted;
 	Inverted.bInvertPitch = true;
@@ -372,6 +459,7 @@ bool FFLFlightInputTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Maus steuert"), HasKey(A.Look, EKeys::Mouse2D, false));
 		TestTrue(TEXT("Gamepad steuert"), HasKey(A.Look, EKeys::Gamepad_Right2D, false));
 		TestTrue(TEXT("Gamepad Trigger = Schub"), HasKey(A.Throttle, EKeys::Gamepad_RightTriggerAxis, false));
+		TestTrue(TEXT("C = Cruise"), HasKey(A.Cruise, EKeys::C, false));
 		TestTrue(TEXT("Gamepad linker Trigger = zurueck (negiert)"), HasKey(A.Throttle, EKeys::Gamepad_LeftTriggerAxis, true));
 	}
 	return true;

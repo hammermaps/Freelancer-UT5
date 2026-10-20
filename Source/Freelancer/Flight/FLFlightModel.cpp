@@ -47,13 +47,43 @@ FFLFlightState FLFlight::Step(const FFLFlightState& State, const FFLFlightInput&
 	}
 	const FFLFlightInput In = RawInput.Clamped();
 
+	// Cruise-Zustandsautomat: Off -> Charging (cruise_charge_time) -> Active; Abschalten oder Stoerung -> Off
+	Out.CruiseDisruptRemaining = FMath::Max(0.f, State.CruiseDisruptRemaining - (float)Dt);
+	if (!In.bCruise || Out.CruiseDisruptRemaining > 0.f)
+	{
+		Out.CruisePhase = EFLCruisePhase::Off;
+		Out.CruiseTimer = 0.f;
+	}
+	else if (State.CruisePhase == EFLCruisePhase::Off)
+	{
+		Out.CruisePhase = EFLCruisePhase::Charging;
+		Out.CruiseTimer = 0.f;
+	}
+	else if (State.CruisePhase == EFLCruisePhase::Charging)
+	{
+		Out.CruiseTimer = State.CruiseTimer + (float)Dt;
+		if (Out.CruiseTimer >= P.CruiseChargeTime)
+		{
+			Out.CruisePhase = EFLCruisePhase::Active;
+			Out.CruiseTimer = 0.f;
+		}
+	}
+	else
+	{
+		Out.CruiseTimer = State.CruiseTimer + (float)Dt;
+	}
+	const bool bCruiseActive = Out.CruisePhase == EFLCruisePhase::Active;
+	// Rampe der Reisegeschwindigkeit 0..1 ueber CruiseAccelTime
+	const double CruiseRamp = bCruiseActive ? FMath::Clamp(Out.CruiseTimer / FMath::Max(P.CruiseAccelTime, KINDA_SMALL_NUMBER), 0.0, 1.0) : 0.0;
+
 	// Drehung: je Achse gedaempft (lokal). Reihenfolge der Achsen: x = Pitch, y = Yaw, z = Roll.
 	const double Input[3] = {In.Pitch, In.Yaw, In.Roll};
 	FVector AngleStep; // ueberstrichener Winkel je Achse in rad
 	for (int32 I = 0; I < 3; ++I)
 	{
 		double Omega = 0.0, Angle = 0.0;
-		Damped(State.AngularVelocity[I], P.SteeringTorque[I] * Input[I], P.AngularDrag[I], P.RotationInertia[I], Dt, Omega, Angle);
+		const double TurnScale = bCruiseActive ? P.CruiseTurnFactor : 1.0;
+		Damped(State.AngularVelocity[I], P.SteeringTorque[I] * TurnScale * Input[I], P.AngularDrag[I], P.RotationInertia[I], Dt, Omega, Angle);
 		Out.AngularVelocity[I] = Omega;
 		AngleStep[I] = Angle;
 	}
@@ -61,8 +91,13 @@ FFLFlightState FLFlight::Step(const FFLFlightState& State, const FFLFlightInput&
 	Out.Rotation = (State.Rotation * Delta).GetNormalized();
 
 	// Translation: lokaler Schub in Weltrichtung (Lage am Schrittanfang), dann exakt gedaempft je Weltachse
-	const double Thrust = In.Throttle >= 0.f ? In.Throttle * P.EngineForce : In.Throttle * P.EngineForce * P.ReverseFraction;
-	const FVector LocalForce(Thrust, In.StrafeRight * P.StrafeForce, In.StrafeUp * P.StrafeForce);
+	double Thrust = In.Throttle >= 0.f ? In.Throttle * P.EngineForce : In.Throttle * P.EngineForce * P.ReverseFraction;
+	FVector LocalForce(Thrust, In.StrafeRight * P.StrafeForce, In.StrafeUp * P.StrafeForce);
+	if (bCruiseActive)
+	{
+		// Cruise: Schub so, dass die Endgeschwindigkeit = Reisegeschwindigkeit * Rampe; Schubregler und Strafe wirken nicht
+		LocalForce = FVector(P.CruiseSpeed * CruiseRamp * P.LinearDrag, 0.0, 0.0);
+	}
 	const FVector WorldForce = State.Rotation.RotateVector(LocalForce);
 	for (int32 I = 0; I < 3; ++I)
 	{
@@ -73,6 +108,13 @@ FFLFlightState FLFlight::Step(const FFLFlightState& State, const FFLFlightInput&
 		Out.Position[I] = State.Position[I] + Dist * 100.0;
 	}
 	return Out;
+}
+
+void FLFlight::DisruptCruise(FFLFlightState& State, const FFLFlightParams& P)
+{
+	State.CruisePhase = EFLCruisePhase::Off;
+	State.CruiseTimer = 0.f;
+	State.CruiseDisruptRemaining = (float)P.CruiseDisruptTime;
 }
 
 double FLFlight::TerminalSpeed(const FFLFlightParams& P)
@@ -107,6 +149,8 @@ FFLFlightParams FLFlight::MakeParams(const UFLShipData* Ship, const UFLEquipment
 		P.EngineForce = Engine->GetFloatProperty("max_force", P.EngineForce);
 		P.LinearDrag += Engine->GetFloatProperty("linear_drag", 0.f);
 		P.ReverseFraction = Engine->GetFloatProperty("reverse_fraction", P.ReverseFraction);
+		P.CruiseChargeTime = Engine->GetFloatProperty("cruise_charge_time", P.CruiseChargeTime);
+		P.CruiseSpeed = Engine->GetFloatProperty("cruise_speed", P.CruiseSpeed); // kommt in den INIs nicht vor, im Original fest 300 m/s
 	}
 	return P;
 }

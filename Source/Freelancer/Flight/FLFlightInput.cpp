@@ -25,6 +25,7 @@ FFLFlightInput FLInput::Compose(const FFLRawInput& Raw, const FFLInputSettings& 
 	Out.StrafeRight = FMath::Clamp(Raw.StrafeRight, -1.f, 1.f);
 	Out.StrafeUp = FMath::Clamp(Raw.StrafeUp, -1.f, 1.f);
 	Out.Roll = FMath::Clamp(Raw.Roll, -1.f, 1.f);
+	Out.bCruise = Raw.bCruise;
 	float Yaw, Pitch;
 	if (Raw.bLookIsDelta)
 	{
@@ -64,6 +65,7 @@ FFLInputActions FLInput::CreateDefaultActions(UObject* Outer)
 	A.StrafeUp = MakeAction(Outer, TEXT("IA_StrafeUp"), EInputActionValueType::Axis1D);
 	A.Roll = MakeAction(Outer, TEXT("IA_Roll"), EInputActionValueType::Axis1D);
 	A.Look = MakeAction(Outer, TEXT("IA_Look"), EInputActionValueType::Axis2D);
+	A.Cruise = MakeAction(Outer, TEXT("IA_Cruise"), EInputActionValueType::Boolean);
 
 	UInputMappingContext* Ctx = NewObject<UInputMappingContext>(Outer, TEXT("IMC_Flight"));
 	A.Mapping = Ctx;
@@ -86,6 +88,9 @@ FFLInputActions FLInput::CreateDefaultActions(UObject* Outer)
 	Negate(Outer, Ctx->MapKey(A.Roll, EKeys::Q));
 	Ctx->MapKey(A.Roll, EKeys::Gamepad_RightShoulder);
 	Negate(Outer, Ctx->MapKey(A.Roll, EKeys::Gamepad_LeftShoulder));
+	// Cruise umschalten
+	Ctx->MapKey(A.Cruise, EKeys::C);
+	Ctx->MapKey(A.Cruise, EKeys::Gamepad_FaceButton_Top);
 	// Steuern: Maus (Delta) und rechter Stick
 	Ctx->MapKey(A.Look, EKeys::Mouse2D);
 	Ctx->MapKey(A.Look, EKeys::Gamepad_Right2D);
