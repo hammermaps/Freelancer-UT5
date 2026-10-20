@@ -290,6 +290,68 @@ bool FFLPredictionTest::RunTest(const FString& Parameters)
 #endif
 
 #if WITH_DEV_AUTOMATION_TESTS
+#include "Flight/FLCollision.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLCollisionTest, "Freelancer.Flight.Collision",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLCollisionTest::RunTest(const FString& Parameters)
+{
+	// Kein Kontakt
+	FFLCollisionBody A{FVector(0, 0, 0), FVector(1000, 0, 0), 100.0, 500.0};
+	FFLCollisionBody B{FVector(2000, 0, 0), FVector(0, 0, 0), 100.0, 500.0};
+	TestFalse(TEXT("kein Kontakt bei 2000 cm"), FLCollision::ResolveSpheres(A, B).bHit);
+
+	// Frontal, gleiche Massen, elastisch: Geschwindigkeiten tauschen
+	B.Position = FVector(900, 0, 0);
+	FFLCollisionResult R = FLCollision::ResolveSpheres(A, B, 1.0);
+	TestTrue(TEXT("Kontakt"), R.bHit);
+	TestTrue(TEXT("Normale zeigt von A nach B"), R.Normal.Equals(FVector(1, 0, 0), 1e-9));
+	TestTrue(TEXT("Eindringtiefe 100 cm"), FMath::IsNearlyEqual(R.Penetration, 100.0, 1e-9));
+	TestTrue(TEXT("Aufprallgeschwindigkeit 1000 cm/s"), FMath::IsNearlyEqual(R.ImpactSpeed, 1000.0, 1e-9));
+	const FVector VA = A.Velocity + R.DeltaVelocityA, VB = B.Velocity + R.DeltaVelocityB;
+	TestTrue(TEXT("elastisch, gleiche Massen: A steht, B uebernimmt"), VA.Size() < 1e-6 && FMath::IsNearlyEqual(VB.X, 1000.0, 1e-6));
+	TestTrue(TEXT("Ueberlappung wird symmetrisch aufgeloest"), FMath::IsNearlyEqual(R.PushA.X, -50.0, 1e-9) && FMath::IsNearlyEqual(R.PushB.X, 50.0, 1e-9));
+
+	// Impulserhaltung bei ungleichen Massen, teilelastisch
+	B.Mass = 400.0;
+	R = FLCollision::ResolveSpheres(A, B, 0.4);
+	const double MomentumBefore = A.Mass * A.Velocity.X + B.Mass * B.Velocity.X;
+	const double MomentumAfter = A.Mass * (A.Velocity + R.DeltaVelocityA).X + B.Mass * (B.Velocity + R.DeltaVelocityB).X;
+	TestTrue(TEXT("Impuls bleibt erhalten"), FMath::IsNearlyEqual(MomentumBefore, MomentumAfter, 1e-6));
+	const double RelAfter = ((A.Velocity + R.DeltaVelocityA) - (B.Velocity + R.DeltaVelocityB)).X;
+	TestTrue(TEXT("Restitution: Abstossgeschwindigkeit = 0.4 * Annaeherung"), FMath::IsNearlyEqual(-RelAfter, 0.4 * 1000.0, 1e-6));
+	TestTrue(TEXT("der leichtere Koerper wird staerker verschoben"), FMath::Abs(R.PushA.X) > FMath::Abs(R.PushB.X));
+
+	// Plastisch: nach dem Stoss keine Annaeherung mehr
+	R = FLCollision::ResolveSpheres(A, B, 0.0);
+	TestTrue(TEXT("plastisch: gemeinsame Geschwindigkeit entlang der Normalen"),
+		FMath::IsNearlyEqual(((A.Velocity + R.DeltaVelocityA) - (B.Velocity + R.DeltaVelocityB)).X, 0.0, 1e-6));
+
+	// Auseinanderlaufend: keine Impulsaenderung, aber die Ueberlappung wird aufgeloest
+	FFLCollisionBody Away{FVector(0, 0, 0), FVector(-500, 0, 0), 100.0, 500.0};
+	R = FLCollision::ResolveSpheres(Away, B, 0.4);
+	TestTrue(TEXT("Treffer trotz Auseinanderlaufen"), R.bHit);
+	TestTrue(TEXT("kein Impuls"), R.DeltaVelocityA.IsNearlyZero() && R.DeltaVelocityB.IsNearlyZero() && R.ImpactSpeed == 0.0);
+	TestTrue(TEXT("aber Verschiebung"), !R.PushA.IsNearlyZero());
+
+	// Gleiche Position: Standardnormale, kein NaN
+	FFLCollisionBody Same{FVector(0, 0, 0), FVector::ZeroVector, 100.0, 500.0};
+	R = FLCollision::ResolveSpheres(Same, Same, 0.4);
+	TestTrue(TEXT("deckungsgleich: Treffer ohne NaN"), R.bHit && !R.PushA.ContainsNaN() && !R.PushB.ContainsNaN());
+
+	// Schwerer Koerper bleibt fast unveraendert
+	FFLCollisionBody Heavy{FVector(900, 0, 0), FVector::ZeroVector, 1.0e7, 500.0};
+	R = FLCollision::ResolveSpheres(A, Heavy, 0.4);
+	TestTrue(TEXT("Schwerer Koerper kaum beeinflusst"), R.DeltaVelocityB.Size() < 0.02 && R.DeltaVelocityA.Size() > 1300.0);
+
+	// Modellradius ohne Daten
+	TestEqual(TEXT("ohne Modell: Standardradius"), FLCollision::ModelRadius(nullptr, 777.0), 777.0);
+	return true;
+}
+#endif
+
+#if WITH_DEV_AUTOMATION_TESTS
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLFlightCruiseTest, "Freelancer.Flight.Cruise",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 

@@ -14,12 +14,16 @@ AFLGameMode::AFLGameMode()
 
 APawn* AFLGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform)
 {
-	AFLShip* Ship = GetWorld()->SpawnActorDeferred<AFLShip>(AFLShip::StaticClass(), SpawnTransform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	// Raster um den Startpunkt: 10 Plaetze in Y, dann naechste Reihe in Z
+	FTransform Placed = SpawnTransform;
+	const int32 Index = SpawnCounter++;
+	Placed.AddToTranslation(FVector(0.0, SpawnGridSpacing * (Index % 10), SpawnGridSpacing * (Index / 10)));
+	AFLShip* Ship = GetWorld()->SpawnActorDeferred<AFLShip>(AFLShip::StaticClass(), Placed, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (Ship)
 	{
 		Ship->ShipData = DefaultShip;
 		Ship->Engine = DefaultEngine;
-		Ship->FinishSpawning(SpawnTransform);
+		Ship->FinishSpawning(Placed);
 	}
 	return Ship;
 }

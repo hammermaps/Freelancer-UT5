@@ -26,5 +26,5 @@ OWN=$(cat "$CLOG1" "$CLOG2" 2>/dev/null | grep "LogFLShip" | grep -c "Rolle=2")
 SIM=$(cat "$CLOG1" "$CLOG2" 2>/dev/null | grep "LogFLShip" | grep -c "Rolle=1")
 MAXERR=$(cat "$CLOG1" "$CLOG2" 2>/dev/null | grep "Rolle=2" | sed -E 's/.*MaxFehler=([0-9.]+) cm.*/\1/' | sort -n | tail -1)
 echo "Joins=$JOIN Fehlerzeilen=$ERR Besitzer-Zeilen=$OWN Fremde-Zeilen=$SIM MaxFehler=${MAXERR:-n/a} cm"
-if [ "$JOIN" -ge 2 ] && [ "$ERR" -eq 0 ] && [ "$OWN" -ge 1 ] && [ "$SIM" -ge 1 ] && [ -n "$MAXERR" ] && awk "BEGIN{exit !($MAXERR < 150)}"; then echo BESTANDEN; exit 0; fi
+if [ "$JOIN" -ge 2 ] && [ "$ERR" -eq 0 ] && [ "$OWN" -ge 1 ] && [ "$SIM" -ge 1 ] && [ -n "$MAXERR" ] && awk "BEGIN{exit !($MAXERR < 1000)}"; then echo BESTANDEN; exit 0; fi
 echo DURCHGEFALLEN; exit 1

@@ -24,5 +24,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ship")
 	TSoftObjectPtr<UFLEquipmentData> DefaultEngine;
 
+	/** Abstand der Startplaetze im Raster (cm); mehr Spieler als Startpunkte werden nebeneinander gesetzt, damit sie nicht ueberlappen. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ship")
+	double SpawnGridSpacing = 4000.0;
+
 	virtual APawn* SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform) override;
+private:
+	int32 SpawnCounter = 0;
 };

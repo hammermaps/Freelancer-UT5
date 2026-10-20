@@ -42,6 +42,10 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ship")
 	TObjectPtr<UCameraComponent> Camera;
 
+	/** Kollisionsradius in cm (aus dem Modell berechnet) */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ship")
+	float CollisionRadius = 500.f;
+
 	UFUNCTION(BlueprintCallable, Category = "Ship")
 	void SetFlightInput(const FFLFlightInput& Input);
 
@@ -93,5 +97,6 @@ private:
 	float LogAccumulator = 0.f;
 
 	void ApplyShipData();
+	void HandleCollisions();
 	void SpawnVisual();
 };

@@ -40,11 +40,17 @@ public:
 	/** Vom Server aufgerufen: Bewegung eines Clients anwenden. Gibt false zurueck, wenn nichts angewendet wurde. */
 	bool ServerApplyMove(const FFLMove& Move);
 
+	/** Server: Kollisionsantwort anwenden (Geschwindigkeitsaenderung und Verschiebung); ab ImpactSpeed wird der Cruise gestoert. */
+	void ApplyCollision(const FVector& DeltaVelocity, const FVector& Push, double ImpactSpeed);
+
 	/** Vom Besitzer aufgerufen, wenn der Server einen Zustand bestaetigt. */
 	void ClientReconcile(uint32 AckedSequence, const FFLFlightState& ServerState);
 
 	/** Replizierter Zustand fuer fremde Clients. */
 	void SetRemoteTarget(const FFLFlightState& Target);
+
+	/** Ab dieser Annaeherungsgeschwindigkeit (cm/s) stoert ein Zusammenstoss den Cruise */
+	static constexpr double CruiseDisruptImpactSpeed = 300.0;
 
 	uint32 GetLastProcessedSequence() const { return LastProcessedSequence; }
 

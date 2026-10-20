@@ -4,12 +4,15 @@
 
 #include "Camera/CameraComponent.h"
 #include "Data/FLEquipmentData.h"
+#include "Data/FLModelData.h"
 #include "Data/FLShipData.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "EngineUtils.h"
+#include "Flight/FLCollision.h"
 #include "Flight/FLShipMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "HAL/IConsoleManager.h"
@@ -55,6 +58,7 @@ void AFLShip::ApplyShipData()
 	if (Ship)
 	{
 		Movement->Params = FLFlight::MakeParams(Ship, Eng);
+		CollisionRadius = (float)FLCollision::ModelRadius(Ship->Model.LoadSynchronous(), CollisionRadius);
 	}
 }
 
@@ -158,6 +162,35 @@ void AFLShip::OnLook(const FInputActionValue& V)
 	Raw.bLookIsDelta = true;
 }
 
+void AFLShip::HandleCollisions()
+{
+	// Nur der Server entscheidet; jedes Paar einmal (Reihenfolge nach Objektname)
+	const FFLFlightState& MyState = Movement->GetState();
+	for (TActorIterator<AFLShip> It(GetWorld()); It; ++It)
+	{
+		AFLShip* Other = *It;
+		if (Other == this || Other->GetFName().Compare(GetFName()) < 0)
+		{
+			continue;
+		}
+		const FFLFlightState& OtherState = Other->Movement->GetState();
+		const double Reach = (double)CollisionRadius + Other->CollisionRadius;
+		if (FVector::DistSquared(MyState.Position, OtherState.Position) > Reach * Reach)
+		{
+			continue;
+		}
+		FFLCollisionBody A{MyState.Position, MyState.Velocity, Movement->Params.Mass, (double)CollisionRadius};
+		FFLCollisionBody B{OtherState.Position, OtherState.Velocity, Other->Movement->Params.Mass, (double)Other->CollisionRadius};
+		const FFLCollisionResult R = FLCollision::ResolveSpheres(A, B, 0.4);
+		if (R.bHit)
+		{
+			Movement->ApplyCollision(R.DeltaVelocityA, R.PushA, R.ImpactSpeed);
+			Other->Movement->ApplyCollision(R.DeltaVelocityB, R.PushB, R.ImpactSpeed);
+			UE_LOG(LogFLShip, Display, TEXT("Kollision %s <-> %s: Aufprall %.0f cm/s, Eindringtiefe %.0f cm"), *GetName(), *Other->GetName(), R.ImpactSpeed, R.Penetration);
+		}
+	}
+}
+
 void AFLShip::SetFlightInput(const FFLFlightInput& Input)
 {
 	Movement->SetInput(Input);
@@ -237,6 +270,7 @@ void AFLShip::Tick(float DeltaSeconds)
 
 	if (HasAuthority())
 	{
+		HandleCollisions();
 		// Server: Zustand fuer fremde Clients replizieren und dem Besitzer in ~30 Hz bestaetigen
 		RepState = Movement->GetState();
 		AckAccumulator += DeltaSeconds;

@@ -52,6 +52,17 @@ bool UFLShipMovementComponent::ServerApplyMove(const FFLMove& Move)
 	return Dt > 0.0;
 }
 
+void UFLShipMovementComponent::ApplyCollision(const FVector& DeltaVelocity, const FVector& Push, double ImpactSpeed)
+{
+	State.Velocity += DeltaVelocity;
+	State.Position += Push;
+	if (ImpactSpeed >= CruiseDisruptImpactSpeed)
+	{
+		FLFlight::DisruptCruise(State, Params);
+	}
+	ApplyToActor();
+}
+
 void UFLShipMovementComponent::ClientReconcile(uint32 AckedSequence, const FFLFlightState& ServerState)
 {
 	if (!bInitializedFromServer)
