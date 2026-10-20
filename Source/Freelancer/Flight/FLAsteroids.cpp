@@ -63,7 +63,7 @@ FFLZoneShape FLAsteroids::MakeZone(const FFLSystemZone& Zone)
 	return S;
 }
 
-void FLAsteroids::Query(const FFLFieldRuntime& Field, const FVector& Position, double Radius, TArray<FFLStaticSphere>& Out, int32 MaxResults)
+void FLAsteroids::QueryInstances(const FFLFieldRuntime& Field, const FVector& Position, double Radius, TArray<FFLFieldInstance>& Out, int32 MaxResults)
 {
 	if (Field.CubeSize <= 0.0 || Field.Asteroids.IsEmpty())
 	{
@@ -105,9 +105,10 @@ void FLAsteroids::Query(const FFLFieldRuntime& Field, const FVector& Position, d
 					const double Touch = Radius + Ast.Radius;
 					if (FVector::DistSquared(P, Position) <= Touch * Touch)
 					{
-						FFLStaticSphere S;
-						S.Id = FName(*FString::Printf(TEXT("%s_%lld_%lld_%lld_%d"), *Field.Name.ToString(), IX, IY, IZ, A));
+						FFLFieldInstance S;
+						S.Nickname = Ast.Nickname;
 						S.Position = P;
+						S.Rotation = Ast.Rotation;
 						S.Radius = Ast.Radius;
 						Out.Add(S);
 						if (Out.Num() >= MaxResults)
@@ -118,6 +119,21 @@ void FLAsteroids::Query(const FFLFieldRuntime& Field, const FVector& Position, d
 				}
 			}
 		}
+	}
+}
+
+void FLAsteroids::Query(const FFLFieldRuntime& Field, const FVector& Position, double Radius, TArray<FFLStaticSphere>& Out, int32 MaxResults)
+{
+	TArray<FFLFieldInstance> Instances;
+	QueryInstances(Field, Position, Radius, Instances, MaxResults);
+	// Ids: Feld + Position (stabil, ohne die Indizes erneut zu rechnen)
+	for (const FFLFieldInstance& I : Instances)
+	{
+		FFLStaticSphere S;
+		S.Id = FName(*FString::Printf(TEXT("%s_%s_%.0f_%.0f_%.0f"), *Field.Name.ToString(), *I.Nickname.ToString(), I.Position.X, I.Position.Y, I.Position.Z));
+		S.Position = I.Position;
+		S.Radius = I.Radius;
+		Out.Add(S);
 	}
 }
 
@@ -132,6 +148,10 @@ FFLFieldRuntime FLAsteroids::BuildField(const UFLAsteroidFieldData& Data, const 
 		if (S.Name == FName("Field"))
 		{
 			F.EmptyFrequency = FCString::Atod(*S.Properties.FindRef(FName("empty_cube_frequency")));
+			if (const FString* Fill = S.Properties.Find(FName("fill_dist")))
+			{
+				F.FillDist = FCString::Atod(**Fill) * 100.0; // Meter -> cm
+			}
 		}
 	}
 	if (Zone)
@@ -152,6 +172,8 @@ FFLFieldRuntime FLAsteroids::BuildField(const UFLAsteroidFieldData& Data, const 
 		FFLFieldAsteroid A;
 		A.Offset = C.Offset;
 		A.Radius = R;
+		A.Nickname = C.Asteroid;
+		A.Rotation = C.Rotation;
 		F.Asteroids.Add(A);
 		F.MaxAsteroidRadius = FMath::Max(F.MaxAsteroidRadius, R);
 	}

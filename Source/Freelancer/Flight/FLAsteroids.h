@@ -23,6 +23,17 @@ struct FREELANCER_API FFLFieldAsteroid
 {
 	FVector Offset = FVector::ZeroVector; // Anteil der Wuerfelgroesse, Unreal-Achsen
 	double Radius = 0.0;                  // cm (Modellradius)
+	FName Nickname;                       // Asteroid-Archetyp (fuer Darstellung)
+	FQuat Rotation = FQuat::Identity;
+};
+
+/** Ein sichtbarer/kollidierender Asteroid in der Welt. */
+struct FREELANCER_API FFLFieldInstance
+{
+	FName Nickname;
+	FVector Position = FVector::ZeroVector;
+	FQuat Rotation = FQuat::Identity;
+	double Radius = 0.0;
 };
 
 /** Laufzeit-Beschreibung eines Asteroidenfelds, das eine Zone ausfuellt. */
@@ -31,6 +42,7 @@ struct FREELANCER_API FFLFieldRuntime
 	FName Name;
 	double CubeSize = 40000.0;           // cm
 	double EmptyFrequency = 0.5;         // Anteil leerer Wuerfel
+	double FillDist = 150000.0;          // Sichtweite des Felds in cm (fill_dist)
 	TArray<FFLFieldAsteroid> Asteroids;  // Inhalt jedes (nicht leeren) Wuerfels
 	FFLZoneShape Zone;
 	TArray<FFLZoneShape> Exclusions;
@@ -53,6 +65,9 @@ namespace FLAsteroids
 	 * Wuerfelmitte in der Zone und nicht in einer Ausschlusszone. MaxResults begrenzt die Ausgabe.
 	 */
 	FREELANCER_API void Query(const FFLFieldRuntime& Field, const FVector& Position, double Radius, TArray<FFLStaticSphere>& Out, int32 MaxResults = 256);
+
+	/** Wie Query, liefert aber vollstaendige Instanzen (Name, Lage, Rotation, Radius) fuer die Darstellung. */
+	FREELANCER_API void QueryInstances(const FFLFieldRuntime& Field, const FVector& Position, double Radius, TArray<FFLFieldInstance>& Out, int32 MaxResults = 4096);
 
 	/** Laufzeitfeld aus Feld-Asset, Zonenliste und Radius-Funktion (Asteroid-Nickname -> Radius in cm, 0 = ueberspringen). */
 	FREELANCER_API FFLFieldRuntime BuildField(const UFLAsteroidFieldData& Data, const FFLSystemZone* Zone, const TArray<const FFLSystemZone*>& Exclusions,

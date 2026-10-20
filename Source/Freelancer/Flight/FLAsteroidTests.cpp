@@ -103,6 +103,24 @@ bool FFLAsteroidFieldTest::RunTest(const FString& Parameters)
 	FLAsteroids::Query(Excluded, FVector(700, 500, 500), 50.0, Hits);
 	TestEqual(TEXT("Ausschlusszone entfernt den Wuerfel"), Hits.Num(), 0);
 
+	// Instanzen fuer die Darstellung: Name, Rotation und Radius kommen mit
+	{
+		FFLFieldRuntime Vis = Field;
+		Vis.Asteroids[0].Nickname = "rock_a";
+		Vis.Asteroids[0].Rotation = FRotator(0, 90, 0).Quaternion();
+		TArray<FFLFieldInstance> Instances;
+		FLAsteroids::QueryInstances(Vis, FVector(700, 500, 500), 50.0, Instances);
+		TestTrue(TEXT("Instanz mit Name, Lage, Rotation"), Instances.Num() >= 1 && Instances[0].Nickname == FName("rock_a")
+			&& Instances[0].Position.Equals(FVector(700, 500, 500), 1e-6) && Instances[0].Rotation.Equals(Vis.Asteroids[0].Rotation, 1e-9) && Instances[0].Radius == 100.0);
+		// Bereich: grosse Sichtweite liefert viele Instanzen, alle innerhalb von Sichtweite + Radius
+		Instances.Reset();
+		FLAsteroids::QueryInstances(Vis, FVector(500, 500, 500), 3000.0, Instances, 4096);
+		TestTrue(TEXT("grosser Bereich liefert viele Instanzen"), Instances.Num() > 20);
+		bool bAllClose = true;
+		for (const FFLFieldInstance& I : Instances) { bAllClose &= FVector::Dist(I.Position, FVector(500, 500, 500)) <= 3000.0 + I.Radius + 1e-6; }
+		TestTrue(TEXT("alle Instanzen im Sichtbereich"), bAllClose);
+	}
+
 	// Alles leer: nichts
 	FFLFieldRuntime Empty = Field;
 	Empty.EmptyFrequency = 1.0;
@@ -128,9 +146,9 @@ bool FFLAsteroidFieldTest::RunTest(const FString& Parameters)
 	UFLAsteroidFieldData* Data = NewObject<UFLAsteroidFieldData>(GetTransientPackage());
 	Data->FieldName = "feld";
 	Data->CubeSize = 40000.f;
-	FFLFieldSection Sec; Sec.Name = "Field"; Sec.Properties.Add("empty_cube_frequency", TEXT("0.4"));
+	FFLFieldSection Sec; Sec.Name = "Field"; Sec.Properties.Add("empty_cube_frequency", TEXT("0.4")); Sec.Properties.Add("fill_dist", TEXT("1500"));
 	Data->Sections.Add(Sec);
-	FFLFieldCube C1; C1.Asteroid = "rock"; C1.Offset = FVector(0.1, 0, 0);
+	FFLFieldCube C1; C1.Asteroid = "rock"; C1.Offset = FVector(0.1, 0, 0); C1.Rotation = FRotator(10, 20, 30).Quaternion();
 	FFLFieldCube C2; C2.Asteroid = "unbekannt";
 	Data->Cubes = {C1, C2};
 	FFLSystemZone Zone; Zone.Shape = EFLZoneShape::Sphere; Zone.Size = FVector(1000, 1000, 1000);
@@ -140,6 +158,8 @@ bool FFLAsteroidFieldTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Leerfrequenz aus dem Feld-Abschnitt"), FMath::IsNearlyEqual(Built.EmptyFrequency, 0.4));
 	TestEqual(TEXT("Ausschlusszonen (null wird ignoriert)"), Built.Exclusions.Num(), 1);
 	TestEqual(TEXT("groesster Radius"), Built.MaxAsteroidRadius, 250.0);
+	TestTrue(TEXT("Sichtweite aus fill_dist (m -> cm)"), FMath::IsNearlyEqual(Built.FillDist, 150000.0));
+	TestTrue(TEXT("Name und Rotation des Asteroiden"), Built.Asteroids[0].Nickname == FName("rock") && Built.Asteroids[0].Rotation.Equals(C1.Rotation, 1e-9));
 	return true;
 }
 #endif
