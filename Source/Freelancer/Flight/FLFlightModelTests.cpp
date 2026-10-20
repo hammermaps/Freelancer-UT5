@@ -288,3 +288,92 @@ bool FFLPredictionTest::RunTest(const FString& Parameters)
 	return true;
 }
 #endif
+
+#if WITH_DEV_AUTOMATION_TESTS
+#include "EnhancedInput/Public/InputAction.h"
+#include "EnhancedInput/Public/InputMappingContext.h"
+#include "Flight/FLFlightInput.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFLFlightInputTest, "Freelancer.Flight.Input",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFLFlightInputTest::RunTest(const FString& Parameters)
+{
+	const FFLInputSettings S;
+
+	// Totzone: kleine Stickwerte ergeben nichts, voller Ausschlag 1, dazwischen weich
+	TestEqual(TEXT("in der Totzone"), FLInput::ApplyDeadZone(0.05f, 0.12f), 0.f);
+	TestEqual(TEXT("voller Ausschlag"), FLInput::ApplyDeadZone(1.f, 0.12f), 1.f);
+	TestEqual(TEXT("negativ"), FLInput::ApplyDeadZone(-1.f, 0.12f), -1.f);
+	TestTrue(TEXT("knapp ueber der Totzone ist klein"), FLInput::ApplyDeadZone(0.13f, 0.12f) < 0.02f);
+
+	// Tasten: Werte werden durchgereicht und begrenzt
+	FFLRawInput Raw;
+	Raw.Throttle = 1.f; Raw.StrafeRight = -1.f; Raw.StrafeUp = 5.f; Raw.Roll = -3.f;
+	FFLFlightInput In = FLInput::Compose(Raw, S);
+	TestEqual(TEXT("Schub"), In.Throttle, 1.f);
+	TestEqual(TEXT("seitwaerts"), In.StrafeRight, -1.f);
+	TestEqual(TEXT("begrenzt hoch"), In.StrafeUp, 1.f);
+	TestEqual(TEXT("begrenzt Rollen"), In.Roll, -1.f);
+
+	// Maus: Delta wird skaliert, + = Nase hoch / rechts
+	FFLRawInput Mouse;
+	Mouse.Look = FVector2D(5.0, -5.0);
+	In = FLInput::Compose(Mouse, S);
+	TestTrue(TEXT("Maus rechts -> Gieren +"), FMath::IsNearlyEqual(In.Yaw, 5.f * S.MouseSensitivity, 1e-6f));
+	TestTrue(TEXT("Maus runter -> Nicken -"), FMath::IsNearlyEqual(In.Pitch, -5.f * S.MouseSensitivity, 1e-6f));
+	Mouse.Look = FVector2D(500.0, 500.0);
+	In = FLInput::Compose(Mouse, S);
+	TestEqual(TEXT("grosse Maus-Bewegung begrenzt (Gieren)"), In.Yaw, 1.f);
+	TestEqual(TEXT("grosse Maus-Bewegung begrenzt (Nicken)"), In.Pitch, 1.f);
+
+	// Stick: Totzone statt Skalierung
+	FFLRawInput Stick;
+	Stick.bLookIsDelta = false;
+	Stick.Look = FVector2D(0.05, 1.0);
+	In = FLInput::Compose(Stick, S);
+	TestEqual(TEXT("Stick in Totzone"), In.Yaw, 0.f);
+	TestEqual(TEXT("Stick voll"), In.Pitch, 1.f);
+
+	// Nicken umkehren
+	FFLInputSettings Inverted;
+	Inverted.bInvertPitch = true;
+	FFLRawInput Up;
+	Up.bLookIsDelta = false;
+	Up.Look = FVector2D(0.0, 1.0);
+	TestEqual(TEXT("Nicken invertiert"), FLInput::Compose(Up, Inverted).Pitch, -1.f);
+
+	// Standardbelegung: Aktionen und Tasten vorhanden
+	UObject* Outer = GetTransientPackage();
+	const FFLInputActions A = FLInput::CreateDefaultActions(Outer);
+	TestNotNull(TEXT("Mapping"), A.Mapping.Get());
+	TestNotNull(TEXT("Schub-Aktion"), A.Throttle.Get());
+	if (A.Mapping)
+	{
+		auto HasKey = [&](const UInputAction* Action, const FKey& Key, bool bNegated)
+		{
+			for (const FEnhancedActionKeyMapping& M : A.Mapping->GetMappings())
+			{
+				if (M.Action == Action && M.Key == Key && (M.Modifiers.Num() > 0) == bNegated)
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+		TestTrue(TEXT("W = Schub"), HasKey(A.Throttle, EKeys::W, false));
+		TestTrue(TEXT("S = Rueckwaerts (negiert)"), HasKey(A.Throttle, EKeys::S, true));
+		TestTrue(TEXT("D = rechts"), HasKey(A.StrafeRight, EKeys::D, false));
+		TestTrue(TEXT("A = links (negiert)"), HasKey(A.StrafeRight, EKeys::A, true));
+		TestTrue(TEXT("Leertaste = hoch"), HasKey(A.StrafeUp, EKeys::SpaceBar, false));
+		TestTrue(TEXT("Strg = runter (negiert)"), HasKey(A.StrafeUp, EKeys::LeftControl, true));
+		TestTrue(TEXT("E = Rolle rechts"), HasKey(A.Roll, EKeys::E, false));
+		TestTrue(TEXT("Q = Rolle links (negiert)"), HasKey(A.Roll, EKeys::Q, true));
+		TestTrue(TEXT("Maus steuert"), HasKey(A.Look, EKeys::Mouse2D, false));
+		TestTrue(TEXT("Gamepad steuert"), HasKey(A.Look, EKeys::Gamepad_Right2D, false));
+		TestTrue(TEXT("Gamepad Trigger = Schub"), HasKey(A.Throttle, EKeys::Gamepad_RightTriggerAxis, false));
+		TestTrue(TEXT("Gamepad linker Trigger = zurueck (negiert)"), HasKey(A.Throttle, EKeys::Gamepad_LeftTriggerAxis, true));
+	}
+	return true;
+}
+#endif

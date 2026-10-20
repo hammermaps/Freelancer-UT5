@@ -5,7 +5,11 @@
 #include "Camera/CameraComponent.h"
 #include "Data/FLEquipmentData.h"
 #include "Data/FLShipData.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
+#include "InputActionValue.h"
 #include "Flight/FLShipMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "HAL/IConsoleManager.h"
@@ -38,6 +42,8 @@ void AFLShip::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeP
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME_CONDITION(AFLShip, RepState, COND_SimulatedOnly);
+	DOREPLIFETIME_CONDITION(AFLShip, ShipData, COND_InitialOnly);
+	DOREPLIFETIME_CONDITION(AFLShip, Engine, COND_InitialOnly);
 }
 
 void AFLShip::ApplyShipData()
@@ -59,12 +65,14 @@ void AFLShip::SpawnVisual()
 	}
 	FActorSpawnParameters Params;
 	Params.Owner = this;
-	Visual = GetWorld()->SpawnActor<AFLShipVisual>(AFLShipVisual::StaticClass(), GetActorTransform(), Params);
+	// Saubere Transformation (Skalierung 1): ein replizierter Pawn kann auf dem Client zunaechst eine Skalierung von 0 haben,
+	// das ergibt unsichtbare Huellen und ungueltige Matrizen im Renderer.
+	Visual = GetWorld()->SpawnActor<AFLShipVisual>(AFLShipVisual::StaticClass(), FTransform(GetActorRotation(), GetActorLocation(), FVector::OneVector), Params);
 	if (Visual)
 	{
 		Visual->Model = Ship->Model;
 		Visual->RebuildFromModel();
-		Visual->AttachToActor(this, FAttachmentTransformRules::KeepRelativeTransform);
+		Visual->AttachToActor(this, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 		Visual->SetReplicates(false);
 	}
 }
@@ -72,6 +80,10 @@ void AFLShip::SpawnVisual()
 void AFLShip::BeginPlay()
 {
 	Super::BeginPlay();
+	if (GetActorScale3D().ContainsNaN() || GetActorScale3D().GetMin() <= KINDA_SMALL_NUMBER)
+	{
+		SetActorScale3D(FVector::OneVector);
+	}
 	ApplyShipData();
 	SpawnVisual();
 	FFLFlightState Start;
@@ -87,6 +99,59 @@ void AFLShip::BeginPlay()
 	{
 		bBot = true;
 	}
+}
+
+void AFLShip::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+	if (!Actions.Mapping)
+	{
+		Actions = FLInput::CreateDefaultActions(this);
+	}
+	if (UEnhancedInputComponent* EIC = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+	{
+		// Axis-Aktionen liefern jeden Frame Werte, solange Tasten gehalten werden; bei Loslassen (Completed) auf 0 setzen
+		EIC->BindAction(Actions.Throttle, ETriggerEvent::Triggered, this, &AFLShip::OnThrottle);
+		EIC->BindAction(Actions.Throttle, ETriggerEvent::Completed, this, &AFLShip::OnThrottle);
+		EIC->BindAction(Actions.StrafeRight, ETriggerEvent::Triggered, this, &AFLShip::OnStrafeRight);
+		EIC->BindAction(Actions.StrafeRight, ETriggerEvent::Completed, this, &AFLShip::OnStrafeRight);
+		EIC->BindAction(Actions.StrafeUp, ETriggerEvent::Triggered, this, &AFLShip::OnStrafeUp);
+		EIC->BindAction(Actions.StrafeUp, ETriggerEvent::Completed, this, &AFLShip::OnStrafeUp);
+		EIC->BindAction(Actions.Roll, ETriggerEvent::Triggered, this, &AFLShip::OnRoll);
+		EIC->BindAction(Actions.Roll, ETriggerEvent::Completed, this, &AFLShip::OnRoll);
+		EIC->BindAction(Actions.Look, ETriggerEvent::Triggered, this, &AFLShip::OnLook);
+	}
+}
+
+void AFLShip::PawnClientRestart()
+{
+	Super::PawnClientRestart();
+	// Belegung dem lokalen Spieler zuweisen (Besitzer-Client)
+	if (const APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		if (ULocalPlayer* LP = PC->GetLocalPlayer())
+		{
+			if (UEnhancedInputLocalPlayerSubsystem* Sub = LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
+			{
+				if (!Actions.Mapping)
+				{
+					Actions = FLInput::CreateDefaultActions(this);
+				}
+				Sub->AddMappingContext(Actions.Mapping, 0);
+			}
+		}
+	}
+}
+
+void AFLShip::OnThrottle(const FInputActionValue& V) { Raw.Throttle = V.Get<float>(); }
+void AFLShip::OnStrafeRight(const FInputActionValue& V) { Raw.StrafeRight = V.Get<float>(); }
+void AFLShip::OnStrafeUp(const FInputActionValue& V) { Raw.StrafeUp = V.Get<float>(); }
+void AFLShip::OnRoll(const FInputActionValue& V) { Raw.Roll = V.Get<float>(); }
+void AFLShip::OnLook(const FInputActionValue& V)
+{
+	// Maus liefert ein Delta je Frame (wird in Tick verbraucht), Stick einen Wert -1..1 (bleibt stehen, bis neu gesetzt)
+	Raw.Look += V.Get<FVector2D>();
+	Raw.bLookIsDelta = true;
 }
 
 void AFLShip::SetFlightInput(const FFLFlightInput& Input)
@@ -135,6 +200,24 @@ void AFLShip::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	// Testhilfe: mit -FLShot=<Sekunden> macht der besitzende Client nach dem Beitritt einen Screenshot (sichtbare Abnahmetests)
+	if (!bShotScheduled && IsLocallyControlled())
+	{
+		float ShotDelay = 0.f;
+		if (FParse::Value(FCommandLine::Get(), TEXT("-FLShot="), ShotDelay) && ShotDelay > 0.f)
+		{
+			bShotScheduled = true;
+			FTimerHandle Handle;
+			GetWorldTimerManager().SetTimer(Handle, [this]() { if (APlayerController* PC = Cast<APlayerController>(GetController())) { PC->ConsoleCommand(TEXT("HighResShot 1280x720")); } }, ShotDelay, false);
+		}
+	}
+
+	if (IsLocallyControlled() && !(bBot || CVarBotFlight.GetValueOnGameThread() != 0))
+	{
+		Movement->SetInput(FLInput::Compose(Raw, InputSettings));
+		Raw.Look = FVector2D::ZeroVector; // Delta wurde verbraucht
+	}
+
 	if ((bBot || CVarBotFlight.GetValueOnGameThread() != 0) && (IsLocallyControlled() || GetLocalRole() == ROLE_AutonomousProxy))
 	{
 		// Testmuster: Vollschub, wechselnde Kurven (Gieren/Nicken/Rollen), damit Vorhersage und Abgleich arbeiten muessen
@@ -165,6 +248,11 @@ void AFLShip::Tick(float DeltaSeconds)
 	{
 		LogAccumulator = 0.f;
 		const FFLFlightState& S = Movement->GetState();
+		const FVector CamLoc = Camera ? Camera->GetComponentLocation() : FVector::ZeroVector;
+		const FVector ActLoc = GetActorLocation();
+		UE_LOG(LogFLShip, Display, TEXT("FLShip %s Kamera=(%.0f, %.0f, %.0f) Actor=(%.0f, %.0f, %.0f) Skalierung=%.2f NaN=%d Visual=%d"),
+			*GetName(), CamLoc.X, CamLoc.Y, CamLoc.Z, ActLoc.X, ActLoc.Y, ActLoc.Z, GetActorScale3D().X,
+			(CamLoc.ContainsNaN() || ActLoc.ContainsNaN() || GetActorQuat().ContainsNaN()) ? 1 : 0, Visual ? 1 : 0);
 		UE_LOG(LogFLShip, Display, TEXT("FLShip %s Rolle=%d: Pos=(%.0f, %.0f, %.0f) Tempo=%.0f cm/s Korrekturen=%d MaxFehler=%.1f cm Moves=%d Abgelehnt=%d Zeit(Spiel)=%.1f s gutgeschrieben=%.1f s verbraucht=%.1f s Wanduhr=%.1f s dt=%.4f Frames=%llu Benchmark=%d FesterSchritt=%d"),
 			*GetName(), (int32)GetLocalRole(), S.Position.X, S.Position.Y, S.Position.Z, S.Velocity.Size(),
 			Movement->GetCorrectionCount(), Movement->GetMaxPositionError(), Movement->GetAppliedMoves(), Movement->GetTrimmedMoves(), GetWorld()->GetTimeSeconds(), Movement->GetBudgetAccrued(), Movement->GetBudgetConsumed(), FPlatformTime::Seconds() - GStartTime, DeltaSeconds, (unsigned long long)GFrameCounter, FApp::IsBenchmarking() ? 1 : 0, FApp::UseFixedTimeStep() ? 1 : 0);

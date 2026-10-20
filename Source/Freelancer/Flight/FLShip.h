@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Flight/FLFlightInput.h"
 #include "Flight/FLFlightModel.h"
 #include "Flight/FLPrediction.h"
 #include "GameFramework/Pawn.h"
@@ -24,11 +25,12 @@ class FREELANCER_API AFLShip : public APawn
 public:
 	AFLShip();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ship")
+	/** Wird beim Spawn auf dem Server gesetzt und repliziert (Client braucht Daten fuer Huelle und identische Flugparameter). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Ship")
 	TSoftObjectPtr<UFLShipData> ShipData;
 
 	/** Triebwerk; leer = Standardwerte des Flugmodells */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ship")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Replicated, Category = "Ship")
 	TSoftObjectPtr<UFLEquipmentData> Engine;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ship")
@@ -48,6 +50,8 @@ public:
 	void SetBotEnabled(bool bEnabled) { bBot = bEnabled; }
 
 	virtual void BeginPlay() override;
+	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	virtual void PawnClientRestart() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -71,6 +75,17 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<AFLShipVisual> Visual;
 
+	FFLInputActions Actions;
+	FFLRawInput Raw;
+	FFLInputSettings InputSettings;
+
+	void OnThrottle(const struct FInputActionValue& V);
+	void OnStrafeRight(const struct FInputActionValue& V);
+	void OnStrafeUp(const struct FInputActionValue& V);
+	void OnRoll(const struct FInputActionValue& V);
+	void OnLook(const struct FInputActionValue& V);
+
+	bool bShotScheduled = false;
 	bool bBot = false;
 	float BotTime = 0.f;
 	float AckAccumulator = 0.f;
